@@ -84,3 +84,8 @@ Resuming now with the concept Authorization. Added and committed.
 Now the final piece. 
 
 How to split the total amount into installment.
+
+## 10:54 PM IST
+I am more or less done with the ambiguities. Now is a good time to go through the acceptance criteria and note down the rejections.
+
+Something that came out during the exercise is the need to define how we would handle fees as back dated transaction comes and influences it. I will add a section in ambiguities file later.

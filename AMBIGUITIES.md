@@ -7,7 +7,7 @@
 4. Overdraft Fee
 5. Interest
 6. Authorization Hold & Settlement
-7. Instalment calculation
+7. Instalment Calculation
 
 ## The Events
 We have to replay the events. Now, what are these events? Are the events given to us as they happened in real life? Or, are these events already registered in the system are being replayed for some purpose like reconiliation. 
