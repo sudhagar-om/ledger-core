@@ -1,5 +1,6 @@
-## Oct 27 2026 12:32 PM IST
+# Oct 27 2026 
 
+## 12:32 PM IST
 I got the problem yesterday evening around 7. I have mostly been absorbing the problem space and trying to get to the core of what the problem is getting at. I feel I have a fairly idea now.
 
 The high level work is building an in memory ledger and replaying the events as they come. But when looking at the details provided about different things, there are quite a few things that stand out.
@@ -57,3 +58,10 @@ E4 Day 6 Acc1 -> day moved - print Acc1 and Acc2's closing data as per day 5
 E5 Day 2 Acc2 -> day moved - what do I do now? I had already posted Acc1 and Acc2's for day 5
 
 We can solve this by keep some data and indicating it in our output table. Acc1's data is at Day 6, Acc2's data is at Day 1. Rather than dealing with all this, we will proceed with the assumption that events belongs to an account are going to be grouped together.
+
+## 2:53 PM IST
+I will move the above two sections to the AMBIGUITIES.md file. Continue from there as I go through the other areas that are underspecified.
+
+I will now proceed to write about the concept of closing balance.
+
+Done with it. Committing
