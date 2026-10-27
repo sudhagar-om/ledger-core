@@ -78,4 +78,9 @@ Have completed the sections about interest and overdraft fee.
 There are 2 pieces pending now - Authorization and then also the installment computation. I will come back to it after a break.
 
 ## 7:38 PM IST
-Resuming now with the concept Authorization.
+Resuming now with the concept Authorization. Added and committed.
+
+## 7:58 PM IST
+Now the final piece. 
+
+How to split the total amount into installment.

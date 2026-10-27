@@ -7,6 +7,7 @@
 4. Overdraft Fee
 5. Interest
 6. Authorization Hold & Settlement
+7. Instalment calculation
 
 ## The Events
 We have to replay the events. Now, what are these events? Are the events given to us as they happened in real life? Or, are these events already registered in the system are being replayed for some purpose like reconiliation. 
@@ -108,3 +109,24 @@ From researching this topic, what I gather is, a settlement is not request that 
 An offline approved card payment may reach our ledger for settlement without any preceding authorization or hold. 
 
 Hence I will model the system to accept a settlement even if there is no corresponding hold.
+
+## Instalment calculation
+We have a credit to an account of Rs. 10.000 and there is a note that says its posted as three equal instalments.
+
+If the instalments are posted separately, then why do we have only one event? We would expect instalment to arrive over a period of time.
+
+We have 2 options
+1. Treat it as a single transaction, treating the instalment information more like a metadata or description. This will lead to just 1 ledger entry.
+2. Treat it as leading to three different postings. 
+
+Given the event explicitly says its posted as three equal instalments, we will go with option 2.
+
+Now, what should be the value for each posting? Below are our options.
+1. 3.334 × 3
+2. 3.333 × 3
+3. 3.333 + 3.333 + 3.334
+4. 3.334 + 3.333 + 3.333
+
+I would insist on preserving the total which eliminates 1 and 2. Either 3 or 4, would work. 
+
+Lets say there is some app that manages these instalments and the first payment is manual and rest are all automatic. In such cases, we can have first transaction be 3.334 and then the UI can simply show instalment amount as 3.333. I am assuming the instalment management app has such product experience and hence going with option 4.
