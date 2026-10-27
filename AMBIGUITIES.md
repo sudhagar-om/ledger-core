@@ -4,10 +4,12 @@
 1. Properties of the Event Stream
 2. The Output Format
 3. Closing Ledger Balance
-4. Overdraft Fee
-5. Interest
-6. Authorization Hold & Settlement
-7. Instalment Calculation
+4. Retrospective Overdraft Fees
+5. Retrospective Overdraft Fees' Refund
+5. Overdraft Fee for BHD Accounts
+6. Interest
+7. Authorization Hold & Settlement
+8. Instalment Calculation
 
 ## The Events
 We have to replay the events. Now, what are these events? Are the events given to us as they happened in real life? Or, are these events already registered in the system are being replayed for some purpose like reconiliation. 
@@ -76,7 +78,38 @@ Having established the 2 notions of closing ledger balance, lets take a look at 
 
 Which notion of closing ledger balance do we apply to this. If we apply the first, this has to be rejected. Given this talks about evaluation and that too at a later day, I will go ahead and apply the second notion to it and take it to be a valid acceptance criteria.
 
-## Overdraft Fee
+## Retrospective Overdraft Fees
+When a back dated entry turns an old day negative, do we go back and charge a fee for that old day?
+
+Day 2 - closing balance is 500. No fee.
+Day 5 - a debit of 1000 arrives with value_date Day 2. Day 2's closing balance is now -500.
+
+Do we charge an overdraft fee for Day 2?
+
+The spec never uses the word retrospective or backdated when talking about fees. Lets look at the rule again.
+
+> AED 25.00, assessed once per day per account when that day's closing ledger balance (all entries with value_date ≤ that day) is negative. Booked with value_date equal to the day assessed.
+
+We can interpret this both ways. 
+
+"assessed *once per day* per account" and "*that day's* closing ledger". This can be taken to mean, it runs everyday and we take that day's closing balance, from whatever transactions we have till that point with value_date <- that day. Then it run the next day and computes the next day's. And so on. The sentence "Booked with value_date equal to the day assessed." may exist for cases where processing may happen after 12AM. Under this interpretation, we don't charge retrospective fee.
+
+Another way to interpret this is "assessed once per *value* day". It sets out a general guideline that each value day shall have a fee assessment which depends on it closing balance which takes into account all transactions <= that value date. A fee assessment have require re-assessments if a back dated transaction influencing it arrives.
+
+Although I am leaning towards the first interpretation, I see few indications in acceptance criteria that take second interpretation to a given. Eg. "*The Day 2* closing ledger balance, evaluated *at end of Day 5* and before any fee is assessed, is AED −370.00." and "E7 causes exactly one overdraft fee to be assessed, *on Day 2.*"
+
+I will go with the second interpretation.
+
+## Retrospective Overdraft Fees' Refund
+
+Once we have charged fee retrospectively and a back dated transaction that negates it arrives, what do we do?
+
+1. Do we keep the fee?
+2. Do we add compensating entry to undo the fee?
+
+I will go with the policy of adding compensating entry.
+
+## Overdraft Fee for BHD Accounts
 The spec gives the overdraft fee for AED accounts but not for BHD accounts. If a BHD account goes negative, what do we do?
 
 We have few options

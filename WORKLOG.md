@@ -89,3 +89,8 @@ How to split the total amount into installment.
 I am more or less done with the ambiguities. Now is a good time to go through the acceptance criteria and note down the rejections.
 
 Something that came out during the exercise is the need to define how we would handle fees as back dated transaction comes and influences it. I will add a section in ambiguities file later.
+
+# Oct 28 2026 
+
+## 1:24 AM
+Been thinking about the overdraft fee. Added a section about it to to the ambiguities.
