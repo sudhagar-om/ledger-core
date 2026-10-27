@@ -65,3 +65,14 @@ I will move the above two sections to the AMBIGUITIES.md file. Continue from the
 I will now proceed to write about the concept of closing balance.
 
 Done with it. Committing
+
+## 3:36 PM IST
+What else do we have. Lets see. 
+BAH accounts overdraft fee isn't given.
+Then interest round off method isn't given.
+Then the whole Authorization piece.
+
+## 4:37
+Have completed the sections about interest and overdraft fee.
+
+There are 2 pieces pending now - Authorization and then also the installment computation. I will come back to it after a break.

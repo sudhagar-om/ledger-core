@@ -4,6 +4,8 @@
 1. Properties of the Event Stream
 2. The Output Format
 3. Closing Ledger Balance
+4. Overdraft Fee
+5. Interest
 
 ## The Events
 We have to replay the events. Now, what are these events? Are the events given to us as they happened in real life? Or, are these events already registered in the system are being replayed for some purpose like reconiliation. 
@@ -71,3 +73,26 @@ Having established the 2 notions of closing ledger balance, lets take a look at 
 > - The Day 2 closing ledger balance, evaluated at end of Day 5 and before any fee is assessed, is AED −370.00.
 
 Which notion of closing ledger balance do we apply to this. If we apply the first, this has to be rejected. Given this talks about evaluation and that too at a later day, I will go ahead and apply the second notion to it and take it to be a valid acceptance criteria.
+
+## Overdraft Fee
+The spec gives the overdraft fee for AED accounts but not for BHD accounts. If a BHD account goes negative, what do we do?
+
+We have few options
+1. Convert the AED 25 to its equivalent BHD and use that
+2. Don't apply the fee and trigger an alert.
+3. Throw an error and trigger an alert.
+
+Given the nature of the system, we should never at any point show some balance that could be wrong. Hence we will go with (3) instead of (2).
+
+About (1), we will discard it because exchange rates keep changing. Then we have to deal with dynamic fee which add complexity for the system and also not a great product experience for the user.
+
+## Daily Interest
+The spec says 0.04% is the interest percentage. Can we have different interest percentages for different currency accounts? Given the currency agnostic nature of it, we can assume that the same interest is applied for all kinds of accounts.
+
+The spec also doesn't specify how do we do the rounding of daily interest value.
+
+In some countries, the regulator give instructions on how to do the rounding. Eg. RBI in India.
+
+For our purpose, we will go with banker's rounding or nearest even. 
+
+We also won't concern ourself with the digits we are discarding. The rounding could be adding little extra money to the user's account or not adding that. We won't accumulate or track them.
