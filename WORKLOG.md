@@ -72,7 +72,10 @@ BAH accounts overdraft fee isn't given.
 Then interest round off method isn't given.
 Then the whole Authorization piece.
 
-## 4:37
+## 4:37 PM IST
 Have completed the sections about interest and overdraft fee.
 
 There are 2 pieces pending now - Authorization and then also the installment computation. I will come back to it after a break.
+
+## 7:38 PM IST
+Resuming now with the concept Authorization.

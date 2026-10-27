@@ -6,6 +6,7 @@
 3. Closing Ledger Balance
 4. Overdraft Fee
 5. Interest
+6. Authorization Hold & Settlement
 
 ## The Events
 We have to replay the events. Now, what are these events? Are the events given to us as they happened in real life? Or, are these events already registered in the system are being replayed for some purpose like reconiliation. 
@@ -96,3 +97,14 @@ In some countries, the regulator give instructions on how to do the rounding. Eg
 For our purpose, we will go with banker's rounding or nearest even. 
 
 We also won't concern ourself with the digits we are discarding. The rounding could be adding little extra money to the user's account or not adding that. We won't accumulate or track them.
+
+## Authorization Hold & Settlement
+In the events we have 2 settlements - one with prior authorization and another without it.
+
+We also have an acceptance criteria that says settlement without auth Id should be rejected.
+
+From researching this topic, what I gather is, a settlement is not request that we can simply reject. It is a matter of fact. It is not something we can turn down. 
+
+An offline approved card payment may reach our ledger for settlement without any preceding authorization or hold. 
+
+Hence I will model the system to accept a settlement even if there is no corresponding hold.
