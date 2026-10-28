@@ -9,7 +9,7 @@ import java.util.TreeMap
  * One account's balance table by value day, kept up to date as entries are appended so that
  * balance queries and end of day never scan entries. It is a projection, not a record: the
  * one mutable model, and it can always be rebuilt by replaying the entries.
- * [ledger.Ledger] decides what goes in it; this class only holds it.
+ * [ledger.LedgerCore] decides what goes in it; this class only holds it.
  */
 class DailyBalances(val openingBalance: Money) {
 

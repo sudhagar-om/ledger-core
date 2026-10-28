@@ -21,7 +21,7 @@ import kotlin.test.assertEquals
 class DailyBalancesTest {
 
     private fun checkedReplay(accounts: List<Account>, events: List<Event>, through: Day, closeEveryDay: Boolean) {
-        val ledger = Ledger(InMemoryLedgerRepository(accounts))
+        val ledger = LedgerCore(InMemoryLedgerRepository(accounts))
         val reports = mutableListOf<DailyReport>()
         val processor = EventProcessor(ledger) { report ->
             reports += report
@@ -59,7 +59,7 @@ class DailyBalancesTest {
 
     @Test
     fun `daily balances match derived balances through the spec replay`() {
-        checkedReplay(accounts = Scenario.accounts, events = Scenario.events, through = Scenario.reportThrough, closeEveryDay = false)
+        checkedReplay(accounts = AccountConfiguration.accounts, events = Scenario.events, through = Scenario.reportThrough, closeEveryDay = false)
     }
 
     @Test

@@ -17,7 +17,7 @@ import ledger.model.data.RejectionReason
  * drives it (an end-of-day scheduler in a live system, [EventStream] for the sample).
  * An event booked on a day the account has already closed is rejected.
  */
-class EventProcessor(val ledger: Ledger, private val onReport: (DailyReport) -> Unit = {}) {
+class EventProcessor(val ledger: LedgerCore, private val onReport: (DailyReport) -> Unit = {}) {
     private val repo = ledger.repo
     private val reports = mutableListOf<DailyReport>()
 
@@ -85,7 +85,7 @@ class EventProcessor(val ledger: Ledger, private val onReport: (DailyReport) -> 
             closingLedgerBalance = ledger.liveBalance(accountId, day),
             availableBalance = ledger.liveAvailableBalance(accountId, day),
             postings = booked.filter { it.sourceEvent != null },
-            feesAssessed = booked.filter { it.type in Ledger.FEE_TYPES },
+            feesAssessed = booked.filter { it.type in LedgerCore.FEE_TYPES },
             interestCapitalized = booked.firstOrNull { it.type == EntryType.INTEREST_CAPITALIZATION },
             holds = ledger.holdStatuses(accountId),
             rejections = repo.rejections(accountId).filter { it.day == day },

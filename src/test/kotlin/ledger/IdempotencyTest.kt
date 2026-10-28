@@ -1,6 +1,6 @@
 package ledger
 
-import ledger.Scenario.ACC_001
+import ledger.AccountConfiguration.ACC_001
 import ledger.model.AccountId
 import ledger.model.AuthId
 import ledger.model.Currency.AED
@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 
 class IdempotencyTest {
     private fun aed(value: String) = Money.of(value, AED)
-    private val ledger = Ledger(InMemoryLedgerRepository(listOf(Account(id = ACC_001, currency = AED, openingBalance = aed("100.00")))))
+    private val ledger = LedgerCore(InMemoryLedgerRepository(listOf(Account(id = ACC_001, currency = AED, openingBalance = aed("100.00")))))
     private val processor = EventProcessor(ledger)
 
     private fun credit(id: String, amount: String = "10.00", day: Int = 1) =

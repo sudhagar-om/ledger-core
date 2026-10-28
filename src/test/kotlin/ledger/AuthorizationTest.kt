@@ -1,6 +1,6 @@
 package ledger
 
-import ledger.Scenario.ACC_001
+import ledger.AccountConfiguration.ACC_001
 import ledger.model.AuthId
 import ledger.model.Currency.AED
 import ledger.model.Day
@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
 
 class AuthorizationTest {
     private fun aed(value: String) = Money.of(value, AED)
-    private val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+    private val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
     private val processor = EventProcessor(ledger)
     private val day = Day(1)
 

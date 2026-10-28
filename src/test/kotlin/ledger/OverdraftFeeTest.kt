@@ -1,7 +1,7 @@
 package ledger
 
-import ledger.Scenario.ACC_001
-import ledger.Scenario.ACC_002
+import ledger.AccountConfiguration.ACC_001
+import ledger.AccountConfiguration.ACC_002
 import ledger.model.AccountId
 import ledger.model.Currency.AED
 import ledger.model.Currency.BHD
@@ -17,7 +17,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class OverdraftFeeTest {
-    private val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+    private val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
     private val processor = EventProcessor(ledger)
 
     private fun debit(accountId: AccountId, amount: Money) =
@@ -38,7 +38,7 @@ class OverdraftFeeTest {
         processor.process(debit(accountId = ACC_002, amount = Money.of("1.000", BHD)))
         processor.endOfDay(Day(2))
         processor.endOfDay(Day(3))
-        assertTrue(ledger.repo.entries(ACC_002).none { it.type in Ledger.FEE_TYPES })
+        assertTrue(ledger.repo.entries(ACC_002).none { it.type in LedgerCore.FEE_TYPES })
         val alerts = ledger.repo.alerts(ACC_002)
         assertTrue(alerts.all { it.kind == AlertKind.OVERDRAFT_FEE_UNDEFINED_FOR_CURRENCY && it.event == null })
         // Each day is flagged at its own close and not re-flagged by later closes.

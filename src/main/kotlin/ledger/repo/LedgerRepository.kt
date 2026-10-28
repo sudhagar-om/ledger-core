@@ -15,11 +15,14 @@ import ledger.model.data.Rejection
 
 /**
  * The data layer: stores the ledger's records and looks them up by account. It holds no
- * business rules; [ledger.Ledger] does all the reasoning over these records. Records are
+ * business rules; [ledger.LedgerCore] does all the reasoning over these records. Records are
  * append-only: nothing is ever updated or removed. The one exception is each account's
  * [DailyBalances], a projection of its entries that can be rebuilt from them.
  */
 interface LedgerRepository {
+    /** Creates an account; rejects an ID that already exists. */
+    fun createAccount(account: Account)
+
     fun accountIds(): List<AccountId>
     fun hasAccount(id: AccountId): Boolean
     fun account(id: AccountId): Account

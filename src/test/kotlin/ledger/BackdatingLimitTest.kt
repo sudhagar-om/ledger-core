@@ -1,6 +1,6 @@
 package ledger
 
-import ledger.Scenario.ACC_001
+import ledger.AccountConfiguration.ACC_001
 import ledger.model.BackdatedAuthorization
 import ledger.model.Currency.AED
 import ledger.model.Day
@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 /** Default limit is 45 days, so an event booked on Day 50 may be value-dated as far back as Day 5. */
 class BackdatingLimitTest {
     private val aed10 = Money.of("10.00", AED)
-    private val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+    private val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
     private val processor = EventProcessor(ledger)
 
     private fun credit(valueDay: Int, authorization: BackdatedAuthorization? = null) = Event.Credit(

@@ -1,7 +1,7 @@
 package ledger
 
-import ledger.Scenario.ACC_001
-import ledger.Scenario.ACC_002
+import ledger.AccountConfiguration.ACC_001
+import ledger.AccountConfiguration.ACC_002
 import ledger.model.AuthId
 import ledger.model.Currency.AED
 import ledger.model.Currency.BHD
@@ -23,7 +23,7 @@ class ReplayTest {
 
     @Test
     fun `processing continues across recurring interest cycles and account switches`() {
-        val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+        val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
         val processor = EventProcessor(ledger)
         fun credit(id: String, day: Int) = Event.Credit(
             id = EventId(id), accountId = ACC_001,
@@ -50,7 +50,7 @@ class ReplayTest {
     /** Full replay with the per-day output printed — this is the "see the output" test. */
     @Test
     fun `replays the full event stream`() {
-        val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+        val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
         val reports = EventStream(EventProcessor(ledger) { print(ReportPrinter.format(it)); println() }).play(Scenario.events, through = Scenario.reportThrough)
 
         assertEquals(expected = 12, actual = reports.size, message = "6 days x 2 accounts")
@@ -71,7 +71,7 @@ class ReplayTest {
 
     @Test
     fun `day 2 closing balance at end of day 5 before fees is -370`() {
-        val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+        val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
         val stream = EventStream(EventProcessor(ledger))
         Scenario.events.takeWhile { it.id != EventId("E9") }.filter { it.accountId == ACC_001 }.forEach(stream::feed)
 
@@ -81,9 +81,9 @@ class ReplayTest {
 
     @Test
     fun `E7 triggers fees on days 2, 4 and 5 and E9 refunds all three`() {
-        val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+        val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
         EventStream(EventProcessor(ledger)).play(Scenario.events, through = Scenario.reportThrough)
-        val fees = ledger.repo.entries().filter { it.accountId == ACC_001 && it.type in Ledger.FEE_TYPES }
+        val fees = ledger.repo.entries().filter { it.accountId == ACC_001 && it.type in LedgerCore.FEE_TYPES }
 
         val charged = fees.filter { it.type == EntryType.OVERDRAFT_FEE }
         assertEquals(listOf(2, 4, 5), charged.map { it.valueDay.number })
@@ -96,7 +96,7 @@ class ReplayTest {
 
     @Test
     fun `settlement without authorization is debited and flagged`() {
-        val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+        val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
         EventStream(EventProcessor(ledger)).play(Scenario.events, through = Scenario.reportThrough)
 
         val e6 = ledger.repo.entries().single { it.sourceEvent == EventId("E6") }
@@ -106,7 +106,7 @@ class ReplayTest {
 
     @Test
     fun `capitalized interest equals the sum of rounded daily accruals`() {
-        val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+        val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
         EventStream(EventProcessor(ledger)).play(Scenario.events, through = Scenario.reportThrough)
 
         val perDay = (Day(1)..Day(6)).map { ledger.interest(ACC_001, it) }

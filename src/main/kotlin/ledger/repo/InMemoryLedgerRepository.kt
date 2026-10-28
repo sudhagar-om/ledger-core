@@ -14,8 +14,12 @@ import ledger.model.data.LedgerEntry
 import ledger.model.data.Rejection
 
 /** [LedgerRepository] backed by in-memory lists. */
-class InMemoryLedgerRepository(accounts: List<Account>) : LedgerRepository {
-    private val accounts: Map<AccountId, Account> = accounts.associateBy { it.id }
+class InMemoryLedgerRepository(accounts: List<Account> = emptyList()) : LedgerRepository {
+    private val accounts = mutableMapOf<AccountId, Account>()
+
+    init {
+        accounts.forEach(::createAccount)
+    }
     private val entries = mutableListOf<LedgerEntry>()
     private val holds = mutableListOf<Hold>()
     private val holdTransitions = mutableListOf<HoldTransition>()
@@ -25,6 +29,11 @@ class InMemoryLedgerRepository(accounts: List<Account>) : LedgerRepository {
     private val closedThrough = mutableMapOf<AccountId, Day>()
     private val dailyBalances = mutableMapOf<AccountId, DailyBalances>()
     private var nextEntryId = 1L
+
+    override fun createAccount(account: Account) {
+        require(account.id !in accounts) { "Account ${account.id} already exists" }
+        accounts[account.id] = account
+    }
 
     override fun accountIds(): List<AccountId> = accounts.keys.toList()
     override fun hasAccount(id: AccountId): Boolean = id in accounts

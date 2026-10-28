@@ -37,7 +37,7 @@ import ledger.repo.LedgerRepository
  * [interest] derive the same numbers from the entries for any day; they are slow, and
  * are kept as the reference the daily balances are tested against (DailyBalancesTest).
  */
-class Ledger(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT, val firstDay: Day = Day(1)) {
+class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT, val firstDay: Day = Day(1)) {
 
     /** Entries valued before [firstDay] share this one row of the daily balances. */
     private val beforeFirstDay = Day(firstDay.number - 1)

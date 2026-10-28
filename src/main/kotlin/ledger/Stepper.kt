@@ -16,8 +16,8 @@ import ledger.repo.InMemoryLedgerRepository
  * Type q + Enter to quit.
  */
 class Stepper(private val events: List<Event> = Scenario.events) {
-    private val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
-    private val repo = ledger.repo
+    private val repo = InMemoryLedgerRepository().also { initializeAccounts(it) }
+    private val ledger = LedgerCore(repo)
     private val closedDays = mutableListOf<DailyReport>()
     private val processor = EventProcessor(ledger) { closedDays += it }
     private val stream = EventStream(processor)
@@ -190,7 +190,7 @@ class Stepper(private val events: List<Event> = Scenario.events) {
 
         fun blankIfZero(m: Money) = if (m.minorUnits == 0L) "" else ReportPrinter.signed(m)
         fun fees(day: Day) = repo.entries()
-            .filter { it.accountId == accountId && it.valueDay == day && it.type in Ledger.FEE_TYPES }
+            .filter { it.accountId == accountId && it.valueDay == day && it.type in LedgerCore.FEE_TYPES }
             .fold(Money.zero(currency)) { acc, e -> acc + e.amount }
         fun capitalized(day: Day) = repo.entries()
             .filter { it.accountId == accountId && it.valueDay == day && it.type == EntryType.INTEREST_CAPITALIZATION }

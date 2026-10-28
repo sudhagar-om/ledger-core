@@ -5,7 +5,9 @@ import ledger.repo.InMemoryLedgerRepository
 fun main(args: Array<String>) {
     if (args.firstOrNull() == "step") return Stepper().run()
 
-    val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+    val repo = InMemoryLedgerRepository()
+    initializeAccounts(repo)
+    val ledger = LedgerCore(repo)
     val processor = EventProcessor(ledger) { print(ReportPrinter.format(it)); println() }
     EventStream(processor).play(Scenario.events, through = Scenario.reportThrough)
 

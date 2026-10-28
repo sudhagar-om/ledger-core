@@ -1,6 +1,6 @@
 package ledger
 
-import ledger.Scenario.ACC_001
+import ledger.AccountConfiguration.ACC_001
 import ledger.model.Currency.AED
 import ledger.model.Day
 import ledger.model.Event
@@ -17,12 +17,12 @@ import kotlin.test.assertTrue
 
 class InterestIntervalTest {
     private fun aed(value: String) = Money.of(value, AED)
-    private fun ledger(interval: Int = 6, firstDay: Int = 1) = Ledger(
+    private fun ledger(interval: Int = 6, firstDay: Int = 1) = LedgerCore(
         repo = InMemoryLedgerRepository(listOf(Account(id = ACC_001, currency = AED, openingBalance = aed("1000.00")))),
         policy = Policy.DEFAULT.copy(interestCapitalizationIntervalDays = interval),
         firstDay = Day(firstDay),
     )
-    private fun Ledger.capitalizations() = repo.entries().filter { it.type == EntryType.INTEREST_CAPITALIZATION }
+    private fun LedgerCore.capitalizations() = repo.entries().filter { it.type == EntryType.INTEREST_CAPITALIZATION }
 
     @Test
     fun `reporting mid cycle does not capitalize and later cycles compound`() {

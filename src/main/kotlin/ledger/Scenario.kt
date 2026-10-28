@@ -1,6 +1,7 @@
 package ledger
 
-import ledger.model.AccountId
+import ledger.AccountConfiguration.ACC_001
+import ledger.AccountConfiguration.ACC_002
 import ledger.model.AuthId
 import ledger.model.Currency.AED
 import ledger.model.Currency.BHD
@@ -8,20 +9,11 @@ import ledger.model.Day
 import ledger.model.Event
 import ledger.model.EventId
 import ledger.model.Money
-import ledger.model.data.Account
 
 /** The event stream from the problem statement, in replay order. */
 object Scenario {
     /** Reporting cutoff for this sample, independent of the interest interval. */
     val reportThrough = Day(6)
-
-    val ACC_001 = AccountId("ACC-001")
-    val ACC_002 = AccountId("ACC-002")
-
-    val accounts = listOf(
-        Account(id = ACC_001, currency = AED, openingBalance = Money.of("0.00", AED)),
-        Account(id = ACC_002, currency = BHD, openingBalance = Money.of("0.000", BHD)),
-    )
 
     private fun aed(s: String) = Money.of(s, AED)
     private fun bhd(s: String) = Money.of(s, BHD)

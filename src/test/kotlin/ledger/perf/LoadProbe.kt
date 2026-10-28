@@ -1,7 +1,7 @@
 package ledger.perf
 
 import ledger.EventProcessor
-import ledger.Ledger
+import ledger.LedgerCore
 import ledger.model.AccountId
 import ledger.model.AuthId
 import ledger.model.Currency
@@ -59,7 +59,7 @@ private fun memory(accounts: Int, events: Int) {
     val accts = accounts(accounts)
     val baseline = usedHeapAfterGc()
     val repo = InMemoryLedgerRepository(accts)
-    val processor = EventProcessor(Ledger(repo))
+    val processor = EventProcessor(LedgerCore(repo))
     val rnd = Random(42)
     for (i in 0 until events) {
         val a = accts[rnd.nextInt(accounts)]
@@ -93,7 +93,7 @@ private inline fun timeMs(block: () -> Unit): Double {
 private fun ops(accounts: Int, entries: Int, day: Int) {
     val accts = accounts(accounts)
     val repo = InMemoryLedgerRepository(accts)
-    val ledger = Ledger(repo)
+    val ledger = LedgerCore(repo)
     val processor = EventProcessor(ledger)
     val rnd = Random(7)
     for (i in 0 until entries) {
@@ -136,7 +136,7 @@ private fun ops(accounts: Int, entries: Int, day: Int) {
 private fun e2e(accounts: Int, eventsPerDay: Int, days: Int) {
     val accts = accounts(accounts)
     val repo = InMemoryLedgerRepository(accts)
-    val processor = EventProcessor(Ledger(repo))
+    val processor = EventProcessor(LedgerCore(repo))
     val rnd = Random(11)
     val openAuths = Array(accounts) { ArrayDeque<Pair<AuthId, Money>>() }
     val postedEvents = Array(accounts) { mutableListOf<EventId>() }
