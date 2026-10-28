@@ -1,0 +1,84 @@
+package ledger
+
+import ledger.Scenario.ACC_001
+import ledger.model.AuthId
+import ledger.model.Currency.AED
+import ledger.model.Day
+import ledger.model.Event
+import ledger.model.EventId
+import ledger.model.Money
+import ledger.model.data.AlertKind
+import ledger.model.data.HoldStatus
+import ledger.repo.InMemoryLedgerRepository
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class AuthorizationTest {
+    private fun aed(value: String) = Money.of(value, AED)
+    private val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+    private val processor = EventProcessor(ledger)
+    private val day = Day(1)
+
+    init {
+        processor.process(Event.Credit(id = EventId("C1"), accountId = ACC_001, bookingDay = day, valueDay = day, amount = aed("100.00")))
+    }
+
+    private fun authorize(authId: String, amount: String) = processor.process(
+        Event.Authorization(id = EventId("auth-$authId"), accountId = ACC_001, bookingDay = day, valueDay = day, authId = AuthId(authId), amount = aed(amount))
+    )
+    private fun settle(authId: String, amount: String) = processor.process(
+        Event.Settlement(id = EventId("settle-$authId"), accountId = ACC_001, bookingDay = day, valueDay = day, authId = AuthId(authId), amount = aed(amount))
+    )
+    private fun status(authId: String) = ledger.holdStatus(ACC_001, AuthId(authId))
+
+    @Test
+    fun `approved hold reduces available balance but not ledger balance`() {
+        authorize(authId = "A1", amount = "40.00")
+        assertEquals(HoldStatus.ACTIVE, status("A1"))
+        assertEquals(aed("100.00"), ledger.closingBalance(ACC_001, day))
+        assertEquals(aed("60.00"), ledger.availableBalance(ACC_001, day))
+        assertTrue(ledger.repo.entries().none { it.sourceEvent == EventId("auth-A1") })
+    }
+
+    @Test
+    fun `hold that leaves available balance at exactly zero is approved`() {
+        authorize(authId = "A1", amount = "100.00")
+        assertEquals(HoldStatus.ACTIVE, status("A1"))
+        assertEquals(aed("0.00"), ledger.availableBalance(ACC_001, day))
+    }
+
+    @Test
+    fun `hold one fil over available balance is declined and holds nothing`() {
+        authorize(authId = "A1", amount = "100.01")
+        assertEquals(HoldStatus.DECLINED, status("A1"))
+        assertEquals(aed("100.00"), ledger.availableBalance(ACC_001, day))
+    }
+
+    @Test
+    fun `active holds count against the next authorization`() {
+        authorize(authId = "A1", amount = "60.00")
+        authorize(authId = "A2", amount = "50.00")
+        assertEquals(HoldStatus.ACTIVE, status("A1"))
+        assertEquals(HoldStatus.DECLINED, status("A2"))
+    }
+
+    @Test
+    fun `settlement below the hold releases the whole hold`() {
+        authorize(authId = "A1", amount = "40.00")
+        settle(authId = "A1", amount = "35.00")
+        assertEquals(HoldStatus.SETTLED, status("A1"))
+        assertEquals(aed("65.00"), ledger.closingBalance(ACC_001, day))
+        assertEquals(aed("65.00"), ledger.availableBalance(ACC_001, day))
+        assertTrue(ledger.repo.alerts().isEmpty())
+    }
+
+    @Test
+    fun `settlement of a declined authorization is debited and flagged`() {
+        authorize(authId = "A1", amount = "500.00")
+        settle(authId = "A1", amount = "500.00")
+        assertEquals(HoldStatus.DECLINED, status("A1"))
+        assertEquals(aed("-400.00"), ledger.closingBalance(ACC_001, day))
+        assertEquals(AlertKind.SETTLEMENT_WITHOUT_AUTHORIZATION, ledger.repo.alerts().single().kind)
+    }
+}

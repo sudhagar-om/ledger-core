@@ -1,0 +1,94 @@
+package ledger
+
+import ledger.Scenario.ACC_001
+import ledger.model.AccountId
+import ledger.model.AuthId
+import ledger.model.Currency.AED
+import ledger.model.Currency.BHD
+import ledger.model.Day
+import ledger.model.Event
+import ledger.model.EventId
+import ledger.model.Money
+import ledger.model.data.RejectionReason
+import ledger.repo.InMemoryLedgerRepository
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class RejectionTest {
+    private fun aed(value: String) = Money.of(value, AED)
+    private val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+    private val processor = EventProcessor(ledger)
+
+    private fun credit(id: String, amount: Money, accountId: AccountId = ACC_001) =
+        Event.Credit(id = EventId(id), accountId = accountId, bookingDay = Day(1), valueDay = Day(1), amount = amount)
+    private fun reversal(id: String, reverses: String) =
+        Event.Reversal(id = EventId(id), accountId = ACC_001, bookingDay = Day(1), valueDay = Day(1), reverses = EventId(reverses))
+    private fun authorization(id: String, authId: String, amount: String) =
+        Event.Authorization(id = EventId(id), accountId = ACC_001, bookingDay = Day(1), valueDay = Day(1), authId = AuthId(authId), amount = aed(amount))
+
+    private fun reasons() = ledger.repo.rejections().map { it.reason }
+
+    @Test
+    fun `event for an unknown account is rejected`() {
+        processor.process(credit(id = "C1", amount = aed("10.00"), accountId = AccountId("ACC-404")))
+        assertEquals(listOf(RejectionReason.UNKNOWN_ACCOUNT), reasons())
+        assertTrue(ledger.repo.entries().isEmpty())
+    }
+
+    @Test
+    fun `amount in another currency is rejected`() {
+        processor.process(credit(id = "C1", amount = Money.of("10.000", BHD)))
+        assertEquals(listOf(RejectionReason.CURRENCY_MISMATCH), reasons())
+        assertTrue(ledger.repo.entries().isEmpty())
+    }
+
+    @Test
+    fun `zero and negative amounts are rejected`() {
+        processor.process(credit(id = "C1", amount = aed("0.00")))
+        processor.process(credit(id = "C2", amount = aed("-10.00")))
+        assertEquals(listOf(RejectionReason.INVALID_AMOUNT, RejectionReason.INVALID_AMOUNT), reasons())
+        assertTrue(ledger.repo.entries().isEmpty())
+    }
+
+    @Test
+    fun `reversal of an event with no entries is rejected`() {
+        processor.process(reversal(id = "R1", reverses = "never-seen"))
+        assertEquals(listOf(RejectionReason.REVERSAL_TARGET_NOT_FOUND), reasons())
+        assertTrue(ledger.repo.entries().isEmpty())
+    }
+
+    @Test
+    fun `reversal of a rejected event is rejected because the event posted nothing`() {
+        processor.process(credit(id = "C1", amount = aed("0.00")))
+        processor.process(reversal(id = "R1", reverses = "C1"))
+        assertEquals(listOf(RejectionReason.INVALID_AMOUNT, RejectionReason.REVERSAL_TARGET_NOT_FOUND), reasons())
+    }
+
+    @Test
+    fun `second reversal of the same event is rejected`() {
+        processor.process(credit(id = "C1", amount = aed("10.00")))
+        processor.process(reversal(id = "R1", reverses = "C1"))
+        processor.process(reversal(id = "R2", reverses = "C1"))
+        assertEquals(listOf(RejectionReason.ALREADY_REVERSED), reasons())
+        assertEquals(aed("0.00"), ledger.closingBalance(ACC_001, Day(1)))
+    }
+
+    @Test
+    fun `a reversal cannot itself be reversed`() {
+        processor.process(credit(id = "C1", amount = aed("10.00")))
+        processor.process(reversal(id = "R1", reverses = "C1"))
+        processor.process(reversal(id = "R2", reverses = "R1"))
+        assertEquals(listOf(RejectionReason.REVERSAL_TARGET_NOT_FOUND), reasons())
+        assertEquals(aed("0.00"), ledger.closingBalance(ACC_001, Day(1)))
+    }
+
+    @Test
+    fun `second authorization with the same auth id is rejected`() {
+        processor.process(credit(id = "C1", amount = aed("100.00")))
+        processor.process(authorization(id = "AU1", authId = "A1", amount = "10.00"))
+        processor.process(authorization(id = "AU2", authId = "A1", amount = "20.00"))
+        assertEquals(listOf(RejectionReason.DUPLICATE_AUTHORIZATION), reasons())
+        assertEquals(listOf(aed("10.00")), ledger.repo.holds(ACC_001).map { it.amount })
+    }
+}
