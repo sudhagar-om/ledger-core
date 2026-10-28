@@ -6,6 +6,8 @@ import ledger.model.EventId
 
 /** Why an event was refused. Nothing was posted and no hold changed; the sender must correct it and resend. */
 enum class RejectionReason {
+    /** Event id already processed with different content. An identical redelivery is ignored, not rejected. */
+    DUPLICATE_EVENT_ID,
     UNKNOWN_ACCOUNT,
     CURRENCY_MISMATCH,
     INVALID_AMOUNT,

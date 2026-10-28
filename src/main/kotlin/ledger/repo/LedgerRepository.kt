@@ -2,6 +2,8 @@ package ledger.repo
 
 import ledger.model.AccountId
 import ledger.model.Day
+import ledger.model.Event
+import ledger.model.EventId
 import ledger.model.data.Account
 import ledger.model.data.Alert
 import ledger.model.data.EntryId
@@ -36,6 +38,10 @@ interface LedgerRepository {
     fun rejections(accountId: AccountId): List<Rejection>
     fun alerts(): List<Alert>
     fun alerts(accountId: AccountId): List<Alert>
+
+    /** The event first processed under [id], whether it was applied or rejected; null if none. */
+    fun processedEvent(id: EventId): Event?
+    fun markProcessed(event: Event)
 
     /** The last business day closed for the account; null if none yet. Only ever moves forward. */
     fun closedThrough(accountId: AccountId): Day?

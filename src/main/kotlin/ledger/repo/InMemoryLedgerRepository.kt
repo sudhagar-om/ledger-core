@@ -2,6 +2,8 @@ package ledger.repo
 
 import ledger.model.AccountId
 import ledger.model.Day
+import ledger.model.Event
+import ledger.model.EventId
 import ledger.model.data.Account
 import ledger.model.data.Alert
 import ledger.model.data.EntryId
@@ -18,6 +20,7 @@ class InMemoryLedgerRepository(accounts: List<Account>) : LedgerRepository {
     private val holdTransitions = mutableListOf<HoldTransition>()
     private val rejections = mutableListOf<Rejection>()
     private val alerts = mutableListOf<Alert>()
+    private val processedEvents = mutableMapOf<EventId, Event>()
     private val closedThrough = mutableMapOf<AccountId, Day>()
     private var nextEntryId = 1L
 
@@ -41,6 +44,12 @@ class InMemoryLedgerRepository(accounts: List<Account>) : LedgerRepository {
     override fun rejections(accountId: AccountId): List<Rejection> = rejections.filter { it.accountId == accountId }
     override fun alerts(): List<Alert> = alerts.toList()
     override fun alerts(accountId: AccountId): List<Alert> = alerts.filter { it.accountId == accountId }
+
+    override fun processedEvent(id: EventId): Event? = processedEvents[id]
+    override fun markProcessed(event: Event) {
+        require(event.id !in processedEvents) { "${event.id} already processed" }
+        processedEvents[event.id] = event
+    }
 
     override fun closedThrough(accountId: AccountId): Day? = closedThrough[accountId]
     override fun markClosed(accountId: AccountId, day: Day) {

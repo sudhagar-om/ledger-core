@@ -24,7 +24,27 @@ class EventProcessor(val ledger: Ledger, private val onReport: (DailyReport) -> 
     fun reports(): List<DailyReport> = reports.toList()
     fun closedThrough(accountId: AccountId): Day? = repo.closedThrough(accountId)
 
+    /**
+     * Idempotent by event id: an identical redelivery is a no-op, and a different event
+     * reusing an id is rejected. Rejected events count as processed, so a corrected
+     * resend needs a new id.
+     */
     fun process(event: Event) {
+        val earlier = repo.processedEvent(event.id)
+        if (earlier == event) return
+        if (earlier != null) {
+            return ledger.reject(
+                event = event,
+                reason = RejectionReason.DUPLICATE_EVENT_ID,
+                message = "${event.id} was already processed with different content",
+            )
+        }
+        book(event)
+        // Marked only once booking has finished, so an event that threw can be retried.
+        repo.markProcessed(event)
+    }
+
+    private fun book(event: Event) {
         val accountId = event.accountId
         if (!repo.hasAccount(accountId)) return ledger.apply(event)
 
