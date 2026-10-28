@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="720" viewBox="0 0 680 720" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+  <title>ledger-core architecture</title>
+  <desc>Main or Stepper drive EventStream, which feeds Scenario events to EventProcessor; EventProcessor calls LedgerCore, which applies events and closes days using Policy, and stores records through LedgerRepository, implemented in memory. AccountConfiguration seeds accounts into the repository and ReportPrinter formats daily reports.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .title { font-size: 14px; font-weight: 600; }
+      .sub { font-size: 12px; }
+      .note { font-size: 11px; fill: #5F5E5A; }
+      .gray rect { fill: #F1EFE8; stroke: #5F5E5A; }
+      .gray .title { fill: #2C2C2A; } .gray .sub { fill: #5F5E5A; }
+      .purple rect { fill: #EEEDFE; stroke: #534AB7; }
+      .purple .title { fill: #26215C; } .purple .sub { fill: #534AB7; }
+      .pink rect { fill: #FBEAF0; stroke: #993556; }
+      .pink .title { fill: #4B1528; } .pink .sub { fill: #993556; }
+      .teal rect { fill: #E1F5EE; stroke: #0F6E56; }
+      .teal .title { fill: #04342C; } .teal .sub { fill: #0F6E56; }
+      rect { stroke-width: 0.75; }
+      .arr { stroke: #5F5E5A; stroke-width: 1.25; fill: none; }
+      text { dominant-baseline: central; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="680" height="720" fill="#FFFFFF" stroke="none"/>
+
+  <g class="gray">
+    <rect x="230" y="30" width="220" height="56" rx="8"/>
+    <text class="title" x="340" y="48" text-anchor="middle">Main / Stepper</text>
+    <text class="sub" x="340" y="68" text-anchor="middle">Full run or step-through</text>
+  </g>
+  <line x1="340" y1="86" x2="340" y2="126" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="gray">
+    <rect x="40" y="130" width="180" height="56" rx="8"/>
+    <text class="title" x="130" y="148" text-anchor="middle">Scenario</text>
+    <text class="sub" x="130" y="168" text-anchor="middle">Sample event list</text>
+  </g>
+  <line x1="220" y1="158" x2="246" y2="158" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="gray">
+    <rect x="250" y="130" width="180" height="56" rx="8"/>
+    <text class="title" x="340" y="148" text-anchor="middle">EventStream</text>
+    <text class="sub" x="340" y="168" text-anchor="middle">Infers end of day</text>
+  </g>
+
+  <g class="gray">
+    <rect x="460" y="130" width="180" height="56" rx="8"/>
+    <text class="title" x="550" y="148" text-anchor="middle">AccountConfiguration</text>
+    <text class="sub" x="550" y="168" text-anchor="middle">Seeds 2 accounts</text>
+  </g>
+
+  <line x1="340" y1="186" x2="340" y2="226" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="gray">
+    <rect x="190" y="230" width="300" height="56" rx="8"/>
+    <text class="title" x="340" y="248" text-anchor="middle">EventProcessor</text>
+    <text class="sub" x="340" y="268" text-anchor="middle">Delivers events, closes days</text>
+  </g>
+  <line x1="190" y1="258" x2="174" y2="258" class="arr" marker-end="url(#arrow)"/>
+  <g class="gray">
+    <rect x="40" y="230" width="130" height="56" rx="8"/>
+    <text class="title" x="105" y="248" text-anchor="middle">ReportPrinter</text>
+    <text class="sub" x="105" y="268" text-anchor="middle">DailyReport text</text>
+  </g>
+
+  <line x1="340" y1="286" x2="340" y2="326" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="purple">
+    <rect x="150" y="330" width="400" height="120" rx="16"/>
+    <text class="title" x="350" y="352" text-anchor="middle">LedgerCore</text>
+  </g>
+  <g class="pink">
+    <rect x="168" y="376" width="178" height="56" rx="8"/>
+    <text class="title" x="257" y="394" text-anchor="middle">Book event</text>
+    <text class="sub" x="257" y="414" text-anchor="middle">Dedup, validate, post</text>
+  </g>
+  <g class="pink">
+    <rect x="360" y="376" width="176" height="56" rx="8"/>
+    <text class="title" x="448" y="394" text-anchor="middle">Close day</text>
+    <text class="sub" x="448" y="414" text-anchor="middle">Expire, fee, interest</text>
+  </g>
+
+  <g class="gray">
+    <rect x="40" y="362" width="92" height="56" rx="8"/>
+    <text class="title" x="86" y="380" text-anchor="middle">Policy</text>
+    <text class="sub" x="86" y="400" text-anchor="middle">Tunables</text>
+  </g>
+  <line x1="132" y1="390" x2="148" y2="390" class="arr" marker-end="url(#arrow)"/>
+
+  <line x1="350" y1="450" x2="350" y2="496" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="teal">
+    <rect x="190" y="500" width="320" height="56" rx="8"/>
+    <text class="title" x="350" y="518" text-anchor="middle">LedgerRepository</text>
+    <text class="sub" x="350" y="538" text-anchor="middle">Append-only records + projections</text>
+  </g>
+  <path d="M600 186 L600 528 L512 528" class="arr" marker-end="url(#arrow)"/>
+  <text class="note" x="556" y="516" text-anchor="middle">seeds</text>
+
+  <line x1="350" y1="556" x2="350" y2="586" class="arr" marker-end="url(#arrow)"/>
+  <text class="note" x="358" y="571">implements</text>
+  <g class="teal">
+    <rect x="190" y="590" width="320" height="56" rx="8"/>
+    <text class="title" x="350" y="608" text-anchor="middle">InMemoryLedgerRepository</text>
+    <text class="sub" x="350" y="628" text-anchor="middle">Maps and lists</text>
+  </g>
+
+  <g class="gray"><rect x="120" y="680" width="14" height="14" rx="3"/></g>
+  <text class="note" x="140" y="687">Drivers, config, I/O</text>
+  <g class="purple"><rect x="285" y="680" width="14" height="14" rx="3"/></g>
+  <text class="note" x="305" y="687">Business logic</text>
+  <g class="teal"><rect x="415" y="680" width="14" height="14" rx="3"/></g>
+  <text class="note" x="435" y="687">Data layer</text>
+</svg>

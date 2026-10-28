@@ -156,3 +156,6 @@ After much deliberation I am going with daily summary table.
 I will also introduce a restriction that back dated transaction are allowed only upto certain number of days. It will help us with checkpointing the daily summary table. Then we can move all the ledger entries back to some archive. 
 
 In rare scenario where a entry with value date before checkpoint needs to be posted, it can be posted but we will value date after the checkpoint's date.
+
+## 2:00 PM
+Start on architecture
