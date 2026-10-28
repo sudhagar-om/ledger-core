@@ -26,7 +26,8 @@ import ledger.repo.LedgerRepository
  *
  * Two kinds of work happen here:
  *  - [apply] turns an input event into entries and holds, or a [Rejection]; an event
- *    that is applied but needs review also raises an [Alert].
+ *    that is applied but needs review also raises an [Alert]. It owns every decision
+ *    to refuse an event, including a reused event id and a booking day already closed.
  *  - [closeDay] runs end-of-day processing: overdraft fees are re-assessed from the
  *    earliest value day changed since the last close, so back-dated entries are picked
  *    up (see AMBIGUITIES.md, Retrospective Overdraft Fees), interest is capitalized on
@@ -44,9 +45,38 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
 
     // ---------------------------------------------------------------- events
 
+    /**
+     * The only way an event gets in. Idempotent by event id: an identical redelivery is a no-op,
+     * and a different event reusing an id is rejected. Rejected events count as processed, so a
+     * corrected resend needs a new id.
+     */
     fun apply(event: Event) {
+        val earlier = repo.processedEvent(event.id)
+        if (earlier == event) return
+        if (earlier != null) {
+            return reject(
+                event = event,
+                reason = RejectionReason.DUPLICATE_EVENT_ID,
+                message = "${event.id} was already processed with different content",
+            )
+        }
+        book(event)
+        // Marked only once booking has finished, so an event that threw can be retried.
+        repo.markProcessed(event)
+    }
+
+    /** Applies the event or rejects it, without looking at whether it was seen before. */
+    private fun book(event: Event) {
         if (!repo.hasAccount(event.accountId)) {
             return reject(event = event, reason = RejectionReason.UNKNOWN_ACCOUNT, message = "no such account")
+        }
+        val closed = repo.accountState(event.accountId).closedThrough
+        if ((closed != null && event.bookingDay <= closed) || event.bookingDay < firstDay) {
+            return reject(
+                event = event,
+                reason = RejectionReason.BOOKING_DAY_CLOSED,
+                message = "booked on ${event.bookingDay} but ${event.accountId} is closed through ${closed ?: "nothing"}",
+            )
         }
         val account = repo.account(event.accountId)
         val amounts = event.amounts
@@ -85,7 +115,7 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
         }
     }
 
-    fun reject(event: Event, reason: RejectionReason, message: String) {
+    private fun reject(event: Event, reason: RejectionReason, message: String) {
         repo.add(
             Rejection(
                 accountId = event.accountId,

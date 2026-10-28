@@ -118,8 +118,8 @@ Any `view-` command takes an optional account filter, e.g. `view-entries ACC-001
 | `AccountBootstrap.kt` | provisions accounts through the repository before processing starts |
 | `Scenario.kt` | the ten events from the spec and reporting cutoff |
 | `EventStream.kt` | feeds events in order and infers end-of-day per account |
-| `EventProcessor.kt` | idempotency check, then applies the event or closes a day, and builds the daily report |
-| `LedgerCore.kt` | all business rules: posting, holds, fees and refunds, interest, balances |
+| `EventProcessor.kt` | hands each event to the ledger, closes days when told to, and builds the daily report |
+| `LedgerCore.kt` | all business rules: idempotency and every rejection, posting, holds, fees and refunds, interest, balances |
 | `Policy.kt` | the constants (fee, rate, hold expiry); see [NUMBERS.md](NUMBERS.md) |
 | `repo/` | append-only storage, with no rules in it |
 | `ReportPrinter.kt`, `Table.kt` | output formatting |

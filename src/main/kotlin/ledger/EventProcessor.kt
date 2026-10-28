@@ -5,7 +5,6 @@ import ledger.model.DailyReport
 import ledger.model.Day
 import ledger.model.Event
 import ledger.model.data.EntryType
-import ledger.model.data.RejectionReason
 
 /**
  * The ledger's entry point. It takes two kinds of input, both decided by the caller:
@@ -15,7 +14,7 @@ import ledger.model.data.RejectionReason
  *
  * It never infers that a day has ended from the events it sees; that belongs to whoever
  * drives it (an end-of-day scheduler in a live system, [EventStream] for the sample).
- * An event booked on a day the account has already closed is rejected.
+ * It never accepts or rejects an event either; [LedgerCore.apply] makes every such decision.
  */
 class EventProcessor(val ledger: LedgerCore, private val onReport: (DailyReport) -> Unit = {}) {
     private val repo = ledger.repo
@@ -24,40 +23,8 @@ class EventProcessor(val ledger: LedgerCore, private val onReport: (DailyReport)
     fun reports(): List<DailyReport> = reports.toList()
     fun closedThrough(accountId: AccountId): Day? = repo.accountState(accountId).closedThrough
 
-    /**
-     * Idempotent by event id: an identical redelivery is a no-op, and a different event
-     * reusing an id is rejected. Rejected events count as processed, so a corrected
-     * resend needs a new id.
-     */
-    fun process(event: Event) {
-        val earlier = repo.processedEvent(event.id)
-        if (earlier == event) return
-        if (earlier != null) {
-            return ledger.reject(
-                event = event,
-                reason = RejectionReason.DUPLICATE_EVENT_ID,
-                message = "${event.id} was already processed with different content",
-            )
-        }
-        book(event)
-        // Marked only once booking has finished, so an event that threw can be retried.
-        repo.markProcessed(event)
-    }
-
-    private fun book(event: Event) {
-        val accountId = event.accountId
-        if (!repo.hasAccount(accountId)) return ledger.apply(event)
-
-        val closed = repo.accountState(accountId).closedThrough
-        if ((closed != null && event.bookingDay <= closed) || event.bookingDay < ledger.firstDay) {
-            return ledger.reject(
-                event = event,
-                reason = RejectionReason.BOOKING_DAY_CLOSED,
-                message = "booked on ${event.bookingDay} but $accountId is closed through ${closed ?: "nothing"}",
-            )
-        }
-        ledger.apply(event)
-    }
+    /** Hands the event to the ledger, which decides whether to apply or reject it. */
+    fun process(event: Event) = ledger.apply(event)
 
     /** End of [day] for every account. */
     fun endOfDay(day: Day) {
