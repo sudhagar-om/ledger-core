@@ -100,7 +100,7 @@ object Scenario {
             bookingDay = Day(5),
             valueDay = Day(5),
             total = bhd("10.000"),
-            instalments = 3,
+            instalments = listOf(bhd("3.334"), bhd("3.333"), bhd("3.333")),
         ),
     )
 }

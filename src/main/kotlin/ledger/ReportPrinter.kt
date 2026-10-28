@@ -79,7 +79,8 @@ object ReportPrinter {
             is Event.Authorization -> "AUTHORIZATION ${e.authId} hold ${e.amount}"
             is Event.Settlement -> "SETTLEMENT ${e.authId} for ${e.amount}"
             is Event.Reversal -> "REVERSAL of ${e.reverses}"
-            is Event.InstalmentCredit -> "CREDIT ${e.total} in ${e.instalments} instalments"
+            is Event.InstalmentCredit ->
+                "CREDIT ${e.total} in ${e.instalments.size} instalments (${e.instalments.joinToString(" + ") { it.toPlainString() }})"
         }
         return "${e.id} ${e.accountId} booked ${e.bookingDay}, value ${e.valueDay}: $what"
     }

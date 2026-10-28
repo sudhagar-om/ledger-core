@@ -27,6 +27,15 @@ class RejectionTest {
     private fun authorization(id: String, authId: String, amount: String) =
         Event.Authorization(id = EventId(id), accountId = ACC_001, bookingDay = Day(1), valueDay = Day(1), authId = AuthId(authId), amount = aed(amount))
 
+    private fun instalmentCredit(id: String, total: String, vararg instalments: String) = Event.InstalmentCredit(
+        id = EventId(id),
+        accountId = ACC_001,
+        bookingDay = Day(1),
+        valueDay = Day(1),
+        total = aed(total),
+        instalments = instalments.map(::aed),
+    )
+
     private fun reasons() = ledger.repo.rejections().map { it.reason }
 
     @Test
@@ -90,5 +99,37 @@ class RejectionTest {
         processor.process(authorization(id = "AU2", authId = "A1", amount = "20.00"))
         assertEquals(listOf(RejectionReason.DUPLICATE_AUTHORIZATION), reasons())
         assertEquals(listOf(aed("10.00")), ledger.repo.holds(ACC_001).map { it.amount })
+    }
+
+    @Test
+    fun `instalments that do not sum to the total are rejected`() {
+        processor.process(instalmentCredit("I1", "10.00", "3.34", "3.34", "3.34"))
+        processor.process(instalmentCredit("I2", "10.00", "3.33", "3.33", "3.33"))
+        assertEquals(listOf(RejectionReason.INVALID_AMOUNT, RejectionReason.INVALID_AMOUNT), reasons())
+        assertTrue(ledger.repo.entries().isEmpty())
+    }
+
+    @Test
+    fun `a zero or foreign currency instalment is rejected`() {
+        processor.process(instalmentCredit("I1", "10.00", "10.00", "0.00"))
+        processor.process(
+            Event.InstalmentCredit(
+                id = EventId("I2"),
+                accountId = ACC_001,
+                bookingDay = Day(1),
+                valueDay = Day(1),
+                total = aed("10.00"),
+                instalments = listOf(aed("5.00"), Money.of("5.000", BHD)),
+            )
+        )
+        assertEquals(listOf(RejectionReason.INVALID_AMOUNT, RejectionReason.CURRENCY_MISMATCH), reasons())
+        assertTrue(ledger.repo.entries().isEmpty())
+    }
+
+    @Test
+    fun `instalments are posted exactly as the event carries them`() {
+        processor.process(instalmentCredit("I1", "10.00", "3.33", "3.33", "3.34"))
+        assertTrue(reasons().isEmpty())
+        assertEquals(listOf(aed("3.33"), aed("3.33"), aed("3.34")), ledger.repo.entries().map { it.amount })
     }
 }

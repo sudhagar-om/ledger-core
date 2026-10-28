@@ -63,17 +63,21 @@ sealed interface Event {
         val reverses: EventId,
     ) : Event
 
-    /** One credit split into [instalments] postings that sum exactly to [total]. */
+    /**
+     * One credit posted as [instalments], one entry each. The sender decides the split;
+     * the ledger only checks that the instalments sum exactly to [total].
+     * See AMBIGUITIES.md, Instalment calculation.
+     */
     data class InstalmentCredit(
         override val id: EventId,
         override val accountId: AccountId,
         override val bookingDay: Day,
         override val valueDay: Day,
         val total: Money,
-        val instalments: Int,
+        val instalments: List<Money>,
     ) : Event {
         init {
-            require(instalments > 0) { "Instalment count must be positive" }
+            require(instalments.isNotEmpty()) { "At least one instalment is required" }
         }
     }
 }

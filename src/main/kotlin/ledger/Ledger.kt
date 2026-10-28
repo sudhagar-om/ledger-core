@@ -39,23 +39,33 @@ class Ledger(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT, va
             return reject(event = event, reason = RejectionReason.UNKNOWN_ACCOUNT, message = "no such account")
         }
         val account = repo.account(event.accountId)
-        val amount = event.amount
-        if (amount != null && amount.currency != account.currency) {
-            return reject(event = event, reason = RejectionReason.CURRENCY_MISMATCH, message = "$amount on a ${account.currency} account")
+        val amounts = event.amounts
+        amounts.firstOrNull { it.currency != account.currency }?.let {
+            return reject(event = event, reason = RejectionReason.CURRENCY_MISMATCH, message = "$it on a ${account.currency} account")
         }
-        if (amount != null && !amount.isPositive) {
-            return reject(event = event, reason = RejectionReason.INVALID_AMOUNT, message = "amount must be positive, got $amount")
+        amounts.firstOrNull { !it.isPositive }?.let {
+            return reject(event = event, reason = RejectionReason.INVALID_AMOUNT, message = "amount must be positive, got $it")
+        }
+        if (event is Event.InstalmentCredit) {
+            val sum = sum(account, event.instalments)
+            if (sum != event.total) {
+                return reject(
+                    event = event,
+                    reason = RejectionReason.INVALID_AMOUNT,
+                    message = "instalments sum to $sum, not ${event.total}",
+                )
+            }
         }
         when (event) {
             is Event.Credit -> post(event = event, type = EntryType.CREDIT, amount = event.amount)
             is Event.Debit -> post(event = event, type = EntryType.DEBIT, amount = -event.amount)
             is Event.InstalmentCredit ->
-                splitEvenly(event.total, event.instalments).forEachIndexed { i, part ->
+                event.instalments.forEachIndexed { i, part ->
                     post(
                         event = event,
                         type = EntryType.INSTALMENT_CREDIT,
                         amount = part,
-                        memo = "instalment ${i + 1}/${event.instalments}",
+                        memo = "instalment ${i + 1}/${event.instalments.size}",
                     )
                 }
             is Event.Authorization -> authorize(event)
@@ -359,27 +369,16 @@ class Ledger(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT, va
 
     companion object {
         val FEE_TYPES = setOf(EntryType.OVERDRAFT_FEE, EntryType.OVERDRAFT_FEE_REFUND)
-
-        /**
-         * Splits in minor units; the remainder goes one unit each to the earliest parts,
-         * so 10.000 / 3 = 3.334 + 3.333 + 3.333. See AMBIGUITIES.md, Instalment calculation.
-         */
-        fun splitEvenly(total: Money, parts: Int): List<Money> {
-            val base = total.minorUnits / parts
-            val remainder = total.minorUnits % parts
-            return (0 until parts).map { i ->
-                Money(if (i < remainder) base + 1 else base, total.currency)
-            }
-        }
     }
 }
 
-private val Event.amount: Money?
+/** Every amount the event carries; each must be positive and in the account's currency. */
+private val Event.amounts: List<Money>
     get() = when (this) {
-        is Event.Credit -> amount
-        is Event.Debit -> amount
-        is Event.Authorization -> amount
-        is Event.Settlement -> amount
-        is Event.InstalmentCredit -> total
-        is Event.Reversal -> null
+        is Event.Credit -> listOf(amount)
+        is Event.Debit -> listOf(amount)
+        is Event.Authorization -> listOf(amount)
+        is Event.Settlement -> listOf(amount)
+        is Event.InstalmentCredit -> listOf(total) + instalments
+        is Event.Reversal -> emptyList()
     }
