@@ -10,6 +10,7 @@
 6. Interest
 7. Authorization Hold & Settlement
 8. Instalment Calculation
+9. Backdating Window
 
 ## The Events
 We have to replay the events. Now, what are these events? Are the events given to us as they happened in real life? Or, are these events already registered in the system are being replayed for some purpose like reconiliation. 
@@ -169,3 +170,19 @@ Now, what should be the value for each posting? Below are our options.
 I would insist on preserving the total which eliminates 1 and 2. Either 3 or 4, would work. 
 
 Lets say there is some app that manages these instalments and the first payment is manual and rest are all automatic. In such cases, we can have first transaction be 3.334 and then the UI can simply show instalment amount as 3.333. I am assuming the instalment management app has such product experience and hence going with option 4.
+
+## Backdating window
+I will introduce a limitation with regards to back dated transactions.
+
+We allow back dated entries only up to 45 days.
+
+But what if, in some rare case, an entry with value date before the window needs to be posted?
+
+We have few options
+1. Reject it.
+2. Post it with its original value date.
+3. Post it, but value date it after the window.
+
+I will go with (3), but only if the entry carries a backdated authorization. If it has one and it is valid, we accept the entry, set its value date to the day after the window and raise an alert. If it doesn't, we reject it.
+
+Note: validating the backdated authorization will be a dummy implementation for now.

@@ -82,8 +82,8 @@ class EventProcessor(val ledger: Ledger, private val onReport: (DailyReport) -> 
         return DailyReport(
             accountId = accountId,
             day = day,
-            closingLedgerBalance = ledger.closingBalance(accountId, day),
-            availableBalance = ledger.availableBalance(accountId, day),
+            closingLedgerBalance = ledger.liveBalance(accountId, day),
+            availableBalance = ledger.liveAvailableBalance(accountId, day),
             postings = booked.filter { it.sourceEvent != null },
             feesAssessed = booked.filter { it.type in Ledger.FEE_TYPES },
             interestCapitalized = booked.firstOrNull { it.type == EntryType.INTEREST_CAPITALIZATION },

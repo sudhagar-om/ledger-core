@@ -135,3 +135,24 @@ Now coming to the critical pieces.
 Shall we keep a hold indefinitely? We can't keep accumulating hold indefintely because they lock part of the balance. We will assume we have a fixed hold expiry duration of 7 days.
 
 This doesn't mean we will reject a settlement for a expired hold. The settlement could be delayed due to variety of reasons. Adding a note about this in ambiguities file.
+
+# 12:00 PM
+Lets me fill in the numbers.md and readme.md. I will ask Claude to write a first version and then iterate on it.
+
+A small issue I found - Instalment credit should actually be carrying it the individual instalment values rather than ledger module calculating it. Correcting it.
+
+Now coming to performance. 
+
+Ok, for each event, we are adding 300 bytes of data. Lets assume a upper bound of 100 million events across 1000s of accounts. Then we are looking at 30 GB of memory. Modern hardware can handle this.
+
+But then at the end of each day we are scanning the whole list to compute balance, interest and fee. Lets say we want to close 1000 accounts during the year end. Then we we will have to do 1000 * 365 * 100 million scans which is not feasible. Lets take an busy account with 10M entries accumulated in a year. Closing this is going to take ~26s as per a load test Claude ran.
+
+A first level of optimisation I am thinking of is having the ledger as a map of Account, List<LedgerEntries> instead of a flat list. With this you are going to be only scanning the entries belong to an account and a typical user account may accumulate 30,000 transactions in a year and small businesses may have 100,000 transactions.
+
+The other option I have is, keeping a daily view.
+
+After much deliberation I am going with daily summary table.
+
+I will also introduce a restriction that back dated transaction are allowed only upto certain number of days. It will help us with checkpointing the daily summary table. Then we can move all the ledger entries back to some archive. 
+
+In rare scenario where a entry with value date before checkpoint needs to be posted, it can be posted but we will value date after the checkpoint's date.

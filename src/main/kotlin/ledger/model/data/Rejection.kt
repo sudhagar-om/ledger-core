@@ -13,6 +13,8 @@ enum class RejectionReason {
     INVALID_AMOUNT,
     /** Booking day already closed for the account, or before the ledger start day. */
     BOOKING_DAY_CLOSED,
+    /** Value date before the checkpoint, without a valid backdated authorization. See AMBIGUITIES.md. */
+    BEFORE_CHECKPOINT,
     DUPLICATE_AUTHORIZATION,
     REVERSAL_TARGET_NOT_FOUND,
     ALREADY_REVERSED,

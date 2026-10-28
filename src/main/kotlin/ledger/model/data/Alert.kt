@@ -12,6 +12,8 @@ enum class AlertKind {
     SETTLEMENT_AFTER_HOLD_EXPIRY,
     /** Closing balance went negative but the spec gives no fee for the currency; no fee charged. See AMBIGUITIES.md. */
     OVERDRAFT_FEE_UNDEFINED_FOR_CURRENCY,
+    /** Value date was before the checkpoint; posted under a backdated authorization, re-dated to the day after it. See AMBIGUITIES.md. */
+    BACKDATED_ENTRY_REDATED,
 }
 
 /** Raised by an event that was still applied, or by end-of-day processing (then [event] is null). */

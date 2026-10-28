@@ -6,6 +6,7 @@ import ledger.model.Event
 import ledger.model.EventId
 import ledger.model.data.Account
 import ledger.model.data.Alert
+import ledger.model.data.DailyBalances
 import ledger.model.data.EntryId
 import ledger.model.data.Hold
 import ledger.model.data.HoldTransition
@@ -22,6 +23,7 @@ class InMemoryLedgerRepository(accounts: List<Account>) : LedgerRepository {
     private val alerts = mutableListOf<Alert>()
     private val processedEvents = mutableMapOf<EventId, Event>()
     private val closedThrough = mutableMapOf<AccountId, Day>()
+    private val dailyBalances = mutableMapOf<AccountId, DailyBalances>()
     private var nextEntryId = 1L
 
     override fun accountIds(): List<AccountId> = accounts.keys.toList()
@@ -57,4 +59,7 @@ class InMemoryLedgerRepository(accounts: List<Account>) : LedgerRepository {
         require(previous == null || day > previous) { "$accountId already closed through $previous" }
         closedThrough[accountId] = day
     }
+
+    override fun dailyBalances(accountId: AccountId): DailyBalances =
+        dailyBalances.getOrPut(accountId) { DailyBalances(account(accountId).openingBalance) }
 }

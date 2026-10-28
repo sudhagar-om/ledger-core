@@ -14,6 +14,8 @@ sealed interface Event {
     val accountId: AccountId
     val bookingDay: Day
     val valueDay: Day
+    /** Needed only when [valueDay] is before the checkpoint. See [BackdatedAuthorization]. */
+    val backdatedAuthorization: BackdatedAuthorization?
 
     data class Credit(
         override val id: EventId,
@@ -21,6 +23,7 @@ sealed interface Event {
         override val bookingDay: Day,
         override val valueDay: Day,
         val amount: Money,
+        override val backdatedAuthorization: BackdatedAuthorization? = null,
     ) : Event
 
     data class Debit(
@@ -29,6 +32,7 @@ sealed interface Event {
         override val bookingDay: Day,
         override val valueDay: Day,
         val amount: Money,
+        override val backdatedAuthorization: BackdatedAuthorization? = null,
     ) : Event
 
     /** Request to place a hold. Approved only if available balance stays >= 0. */
@@ -39,6 +43,7 @@ sealed interface Event {
         override val valueDay: Day,
         val authId: AuthId,
         val amount: Money,
+        override val backdatedAuthorization: BackdatedAuthorization? = null,
     ) : Event
 
     /**
@@ -52,6 +57,7 @@ sealed interface Event {
         override val valueDay: Day,
         val authId: AuthId,
         val amount: Money,
+        override val backdatedAuthorization: BackdatedAuthorization? = null,
     ) : Event
 
     /** Undoes the ledger effect of an earlier event by appending compensating entries. */
@@ -61,6 +67,7 @@ sealed interface Event {
         override val bookingDay: Day,
         override val valueDay: Day,
         val reverses: EventId,
+        override val backdatedAuthorization: BackdatedAuthorization? = null,
     ) : Event
 
     /**
@@ -75,6 +82,7 @@ sealed interface Event {
         override val valueDay: Day,
         val total: Money,
         val instalments: List<Money>,
+        override val backdatedAuthorization: BackdatedAuthorization? = null,
     ) : Event {
         init {
             require(instalments.isNotEmpty()) { "At least one instalment is required" }

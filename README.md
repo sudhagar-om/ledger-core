@@ -108,6 +108,7 @@ Any `view-` command takes an optional account filter, e.g. `view-entries ACC-001
 | `RejectionTest` | unknown account, wrong currency, bad amounts, instalments that don't add up to the total, invalid reversals, duplicate auth ids |
 | `IdempotencyTest` | redelivered events are ignored; a reused id with different content is rejected |
 | `InterestIntervalTest` | capitalization cycles and back-dated adjustments after capitalization |
+| `BackdatingLimitTest` | value dates at the 45-day limit, and before the checkpoint with and without a backdated authorization |
 
 ## Code map
 

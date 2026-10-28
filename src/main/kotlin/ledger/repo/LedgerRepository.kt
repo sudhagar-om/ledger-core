@@ -6,6 +6,7 @@ import ledger.model.Event
 import ledger.model.EventId
 import ledger.model.data.Account
 import ledger.model.data.Alert
+import ledger.model.data.DailyBalances
 import ledger.model.data.EntryId
 import ledger.model.data.Hold
 import ledger.model.data.HoldTransition
@@ -15,7 +16,8 @@ import ledger.model.data.Rejection
 /**
  * The data layer: stores the ledger's records and looks them up by account. It holds no
  * business rules; [ledger.Ledger] does all the reasoning over these records. Records are
- * append-only: nothing is ever updated or removed.
+ * append-only: nothing is ever updated or removed. The one exception is each account's
+ * [DailyBalances], a projection of its entries that can be rebuilt from them.
  */
 interface LedgerRepository {
     fun accountIds(): List<AccountId>
@@ -46,4 +48,7 @@ interface LedgerRepository {
     /** The last business day closed for the account; null if none yet. Only ever moves forward. */
     fun closedThrough(accountId: AccountId): Day?
     fun markClosed(accountId: AccountId, day: Day)
+
+    /** The account's daily balances, created empty on first use. */
+    fun dailyBalances(accountId: AccountId): DailyBalances
 }
