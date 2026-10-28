@@ -29,6 +29,12 @@ Run the test suite:
 ./mvnw test
 ```
 
+This reports **one failure on purpose** (see [Known failing test](#known-failing-test)), so the build ends in `BUILD FAILURE`. To run everything else:
+
+```bash
+./mvnw test -Dtest='!SettlementWithoutAuthorizationTest'
+```
+
 ## Reading the replay output
 
 ### Per-day blocks
@@ -95,6 +101,25 @@ Any `view-` command takes an optional account filter, e.g. `view-entries ACC-001
 | `IdempotencyTest` | redelivered events are ignored; a reused id with different content is rejected |
 | `InterestIntervalTest` | capitalization cycles and back-dated adjustments after capitalization |
 | `BackdatingLimitTest` | value dates at the 45-day limit, and before the checkpoint with and without a backdated authorization |
+| `SettlementWithoutAuthorizationTest` | **fails on purpose**: rejected criterion 2, a settlement with no authorization (see below) |
+
+### Known failing test
+
+`SettlementWithoutAuthorizationTest` > `settlement for an authorization never seen is rejected and no funds leave` fails by design:
+
+```
+expected: <AED 100.00> but was: <AED -80.00>
+```
+
+The test is acceptance criterion 2, which I refused in [REJECTED.md](REJECTED.md): a settlement for an authorization the ledger has never seen must be rejected, and no money may leave the account. The spec says nothing about this case, so how to handle it is my own assumption. I accept such a settlement, debit it and raise an alert, because a settlement means the card scheme has already moved the money, e.g. for an offline-approved payment (AMBIGUITIES.md, *Authorization Hold & Settlement*). The test credits AED 100.00 and settles 180.00 against an unknown Auth-Z. The criterion expects the balance to stay at 100.00. My design leaves it at −80.00.
+
+What the failure shows is the cost of that assumption:
+
+- **Money leaves on an unverified message.** No available-balance check runs, so a settlement can overdraw an account that no authorization would have been approved for. In the replay, E6 doubles ACC-001's Day 4 overdraft, from −180.00 to −360.00.
+- **The customer can pay for it.** In the test, the Day 1 overdraft fee is caused entirely by a debit the bank never approved.
+- **The only safeguard is an alert.** Until someone handles it, the debit and any fees it causes stand.
+
+Rejecting the settlement outright doesn't fix this, because the merchant gets paid either way and the ledger would then understate what the customer owes. The production answer would be to post the debit to a suspense account until it is matched or charged back, and not charge fees caused by it. The comments in the test cover the details.
 
 ## Code map
 
