@@ -21,3 +21,12 @@ We have taken a design decision that ensure the instalments sum to the total val
 5. If the rounded daily interest accruals do not sum to the capitalized total, the remainder is discarded.
 
 We have a non-negotiable rule that give an invariant that the rounded daily accruals must sum exactly to the capitalized total. The only way to achieve that is by rounding each days accrual and then sum them. So this can come up only if we haven't follow the rule. If this case does come up, then we will flag it for review, rather than silently discarding the reminder.
+
+
+# Approaches abandoned mid-build
+
+1. Money as a BigDecimal with a scale check
+
+The first version of `Money` stored a `BigDecimal` and checked in its constructor that the amount had no more decimal places than the currency allows. It worked, but the guarantee lived in a runtime check rather than in the type, and `BigDecimal` equality is scale-sensitive (`1.2 != 1.20`), so `Money` needed hand-written `equals`/`hashCode` over a normalised copy.
+
+Replaced with a `Long` count of minor units (fils for AED, 1/1000 for BHD). A sub-minor-unit amount now cannot be represented at all. `BigDecimal` is used only at the edges: parsing input, printing, and the interest calculation, which rounds (HALF_EVEN) straight back to minor units. Arithmetic uses `Math.addExact` and friends so an overflow throws rather than wrapping. All replay numbers were unchanged by the switch.

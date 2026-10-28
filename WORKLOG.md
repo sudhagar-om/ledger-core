@@ -94,3 +94,18 @@ Something that came out during the exercise is the need to define how we would h
 
 ## 1:24 AM
 Been thinking about the overdraft fee. Added a section about it to to the ambiguities.
+
+## 8:30 AM
+Its time to implement this. Will start the central models we should have.
+
+Lets start with the simplest design. We have a ledger to which we just append and we compute everything needed from it on demand.
+
+I will get a initial version from Claude of the implementation from Claude and then iterate on it.
+
+Some correction I am doing to it
+1. Use Long in Money class rather than Bigdecimal because we are storing minor units
+2. Remove the notion of Replay. The system should not care whether its replay or event actually getting streamed
+3. Better formatting of output
+4. Added a stepper helper to step through the events for better understanding
+
+I will commit these for now.

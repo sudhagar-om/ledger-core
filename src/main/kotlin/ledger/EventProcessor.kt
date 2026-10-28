@@ -1,0 +1,75 @@
+package ledger
+
+import ledger.model.AccountId
+import ledger.model.DailyReport
+import ledger.model.Day
+import ledger.model.EntryType
+import ledger.model.ErrorKind
+import ledger.model.Event
+
+/**
+ * The ledger's entry point. It takes two kinds of input, both decided by the caller:
+ *  - [process]: an event to book.
+ *  - [endOfDay]: a business day has ended for an account. Runs end-of-day processing
+ *    and emits one [DailyReport] per closed day.
+ *
+ * It never infers that a day has ended from the events it sees; that belongs to whoever
+ * drives it (an end-of-day scheduler in a live system, [EventStream] for the sample).
+ * An event booked on a day the account has already closed is rejected.
+ */
+class EventProcessor(val ledger: Ledger, private val onReport: (DailyReport) -> Unit = {}) {
+    private val lastClosed = mutableMapOf<AccountId, Day>()
+    private val reports = mutableListOf<DailyReport>()
+
+    fun reports(): List<DailyReport> = reports.toList()
+    fun closedThrough(accountId: AccountId): Day? = lastClosed[accountId]
+
+    fun process(event: Event) {
+        val accountId = event.accountId
+        if (!ledger.hasAccount(accountId)) return ledger.apply(event)
+
+        val closed = lastClosed[accountId]
+        if ((closed != null && event.bookingDay <= closed) || event.bookingDay < ledger.firstDay) {
+            return ledger.reject(
+                event = event,
+                kind = ErrorKind.BOOKING_DAY_CLOSED,
+                message = "booked on ${event.bookingDay} but $accountId is closed through ${closed ?: "nothing"}",
+            )
+        }
+        ledger.apply(event)
+    }
+
+    /** End of [day] for every account. */
+    fun endOfDay(day: Day) {
+        ledger.accountIds().forEach { endOfDay(it, day) }
+    }
+
+    /** Closes every still-open day through [day], so a missed close is caught up. Closed days are skipped. */
+    fun endOfDay(accountId: AccountId, day: Day) {
+        var next = Day((lastClosed[accountId]?.number ?: (ledger.firstDay.number - 1)) + 1)
+        while (next <= day) {
+            ledger.closeDay(accountId, next)
+            val report = report(accountId, next)
+            reports += report
+            onReport(report)
+            lastClosed[accountId] = next
+            next = Day(next.number + 1)
+        }
+    }
+
+    private fun report(accountId: AccountId, day: Day): DailyReport {
+        val booked = ledger.entriesBookedOn(accountId, day)
+        return DailyReport(
+            accountId = accountId,
+            day = day,
+            closingLedgerBalance = ledger.closingBalance(accountId, day),
+            availableBalance = ledger.availableBalance(accountId, day),
+            postings = booked.filter { it.sourceEvent != null },
+            feesAssessed = booked.filter { it.type in Ledger.FEE_TYPES },
+            interestAccruals = ledger.accrualsBookedOn(accountId, day),
+            interestCapitalized = booked.firstOrNull { it.type == EntryType.INTEREST_CAPITALIZATION },
+            holds = ledger.holdStatuses(accountId),
+            errors = ledger.errorsOn(accountId, day),
+        )
+    }
+}
