@@ -1,6 +1,6 @@
 package ledger.perf
 
-import ledger.EventProcessor
+import ledger.EndOfDayProcessor
 import ledger.LedgerCore
 import ledger.model.AccountId
 import ledger.model.AuthId
@@ -54,12 +54,12 @@ private fun histogram(top: Int): String {
     return out.lines().take(top + 3).joinToString("\n")
 }
 
-/** Credits and debits through the processor (the O(1) paths), plus one hold + two transitions per 5 events. */
+/** Credits and debits through the ledger (the O(1) paths), plus one hold + two transitions per 5 events. */
 private fun memory(accounts: Int, events: Int) {
     val accts = accounts(accounts)
     val baseline = usedHeapAfterGc()
     val repo = InMemoryLedgerRepository(accts)
-    val processor = EventProcessor(LedgerCore(repo))
+    val ledger = LedgerCore(repo)
     val rnd = Random(42)
     for (i in 0 until events) {
         val a = accts[rnd.nextInt(accounts)]
@@ -78,7 +78,7 @@ private fun memory(accounts: Int, events: Int) {
         } else {
             Event.Debit(id = id, accountId = a.id, bookingDay = day, valueDay = day, amount = amount)
         }
-        processor.process(event)
+        ledger.apply(event)
     }
     val used = usedHeapAfterGc() - baseline
     println("events=$events accounts=$accounts retained=${used / 1_048_576} MB  bytes/event=${used / events}")
@@ -95,13 +95,13 @@ private fun ops(accounts: Int, entries: Int, day: Int) {
     val accts = accounts(accounts)
     val repo = InMemoryLedgerRepository(accts)
     val ledger = LedgerCore(repo)
-    val processor = EventProcessor(ledger)
+    val endOfDay = EndOfDayProcessor(ledger)
     val rnd = Random(7)
     for (i in 0 until entries) {
         val a = accts[rnd.nextInt(accounts)]
         val d = Day(1 + rnd.nextInt(day))
         val amount = Money(1L + rnd.nextInt(50_000), a.currency)
-        processor.process(Event.Credit(id = EventId("E$i"), accountId = a.id, bookingDay = d, valueDay = d, amount = amount))
+        ledger.apply(Event.Credit(id = EventId("E$i"), accountId = a.id, bookingDay = d, valueDay = d, amount = amount))
     }
     // One active hold per account so availableBalance has hold-status work to do.
     accts.forEachIndexed { i, a ->
@@ -116,18 +116,18 @@ private fun ops(accounts: Int, entries: Int, day: Int) {
     }
     println("accounts=$accounts entries=${repo.entries().size} day=$day (avg of $samples)")
     avg("process(Credit)") { a, i ->
-        processor.process(Event.Credit(id = EventId("C$i"), accountId = a.id, bookingDay = today, valueDay = today, amount = Money(1, a.currency)))
+        ledger.apply(Event.Credit(id = EventId("C$i"), accountId = a.id, bookingDay = today, valueDay = today, amount = Money(1, a.currency)))
     }
     avg("process(Authorization)") { a, i ->
-        processor.process(Event.Authorization(id = EventId("Z$i"), accountId = a.id, bookingDay = today, valueDay = today, authId = AuthId("Z$i"), amount = Money(1, a.currency)))
+        ledger.apply(Event.Authorization(id = EventId("Z$i"), accountId = a.id, bookingDay = today, valueDay = today, authId = AuthId("Z$i"), amount = Money(1, a.currency)))
     }
     avg("process(Settlement)") { a, i ->
-        processor.process(Event.Settlement(id = EventId("S$i"), accountId = a.id, bookingDay = today, valueDay = today, authId = AuthId("A$i"), amount = Money(100, a.currency)))
+        ledger.apply(Event.Settlement(id = EventId("S$i"), accountId = a.id, bookingDay = today, valueDay = today, authId = AuthId("A$i"), amount = Money(100, a.currency)))
     }
     avg("process(Reversal)") { a, i ->
-        processor.process(Event.Reversal(id = EventId("R$i"), accountId = a.id, bookingDay = today, valueDay = today, reverses = EventId("C$i")))
+        ledger.apply(Event.Reversal(id = EventId("R$i"), accountId = a.id, bookingDay = today, valueDay = today, reverses = EventId("C$i")))
     }
-    avg("endOfDay(account) incl. report") { a, _ -> processor.endOfDay(a.id, today) }
+    avg("endOfDay(account) incl. report") { a, _ -> endOfDay.close(a.id, today) }
 }
 
 /**
@@ -137,7 +137,8 @@ private fun ops(accounts: Int, entries: Int, day: Int) {
 private fun e2e(accounts: Int, eventsPerDay: Int, days: Int) {
     val accts = accounts(accounts)
     val repo = InMemoryLedgerRepository(accts)
-    val processor = EventProcessor(LedgerCore(repo))
+    val ledger = LedgerCore(repo)
+    val endOfDay = EndOfDayProcessor(ledger)
     val rnd = Random(11)
     val openAuths = Array(accounts) { ArrayDeque<Pair<AuthId, Money>>() }
     val postedEvents = Array(accounts) { mutableListOf<EventId>() }
@@ -178,15 +179,15 @@ private fun e2e(accounts: Int, eventsPerDay: Int, days: Int) {
                     }
                 }
                 if (event is Event.Credit || event is Event.Debit) postedEvents[ai] += id
-                processor.process(event)
+                ledger.apply(event)
             }
         }
-        val close = timeMs { processor.endOfDay(day) }
+        val close = timeMs { endOfDay.close(day) }
         val heap = Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() } / 1_048_576
         println("%4d %10d %10.0f %12.0f %12.3f %10d".format(d, repo.entries().size, ingest, close, close / accounts, heap))
     }
     val retained = usedHeapAfterGc()
     println("retained after GC: ${retained / 1_048_576} MB, events: $seq, entries: ${repo.entries().size}")
     println(histogram(top = 16))
-    println("reports kept: ${processor.reports().size}") // keeps repo and reports reachable through the histogram
+    println("reports kept: ${endOfDay.reports().size}") // keeps repo and reports reachable through the histogram
 }

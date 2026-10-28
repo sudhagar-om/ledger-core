@@ -27,22 +27,22 @@ class InterestIntervalTest {
     @Test
     fun `reporting mid cycle does not capitalize and later cycles compound`() {
         val ledger = ledger()
-        val processor = EventProcessor(ledger)
-        processor.endOfDay(Day(4))
+        val endOfDay = EndOfDayProcessor(ledger)
+        endOfDay.close(Day(4))
         assertTrue(ledger.capitalizations().isEmpty())
-        assertEquals(4, processor.reports().size)
-        processor.endOfDay(Day(18))
+        assertEquals(4, endOfDay.reports().size)
+        endOfDay.close(Day(18))
         assertEquals(listOf(6, 12, 18), ledger.capitalizations().map { it.bookingDay.number })
         assertEquals(listOf("2.40", "2.40", "2.40").map(::aed), ledger.capitalizations().map { it.amount })
         assertEquals(aed("1007.20"), ledger.closingBalance(ACC_001, Day(18)))
-        assertEquals(18, processor.reports().size)
+        assertEquals(18, endOfDay.reports().size)
     }
 
     @Test
     fun `custom interval is anchored to ledger start and compounds from next day`() {
         val ledger = ledger(interval = 1, firstDay = 10)
-        val processor = EventProcessor(ledger)
-        processor.endOfDay(Day(50))
+        val endOfDay = EndOfDayProcessor(ledger)
+        endOfDay.close(Day(50))
         assertEquals((10..50).toList(), ledger.capitalizations().map { it.bookingDay.number })
         assertEquals(aed("0.40"), ledger.interest(ACC_001, Day(10)))
         // After enough daily postings the rounded daily interest increases.
@@ -54,7 +54,7 @@ class InterestIntervalTest {
     @Test
     fun `custom multi day interval does not use absolute day multiples`() {
         val ledger = ledger(interval = 3, firstDay = 5)
-        EventProcessor(ledger).endOfDay(Day(10))
+        EndOfDayProcessor(ledger).close(Day(10))
         assertEquals(listOf(7, 10), ledger.capitalizations().map { it.bookingDay.number })
         assertEquals(listOf(aed("1.20"), aed("1.20")), ledger.capitalizations().map { it.amount })
     }
@@ -62,13 +62,13 @@ class InterestIntervalTest {
     @Test
     fun `backdated adjustment after capitalization is settled at next interval`() {
         val ledger = ledger()
-        val processor = EventProcessor(ledger)
-        processor.endOfDay(Day(6))
+        val endOfDay = EndOfDayProcessor(ledger)
+        endOfDay.close(Day(6))
         val firstPosting = ledger.capitalizations().single()
-        processor.process(Event.Credit(EventId("late"), ACC_001, Day(7), Day(1), aed("1000.00")))
-        processor.endOfDay(Day(7))
+        ledger.apply(Event.Credit(EventId("late"), ACC_001, Day(7), Day(1), aed("1000.00")))
+        endOfDay.close(Day(7))
         assertEquals(listOf(firstPosting), ledger.capitalizations())
-        processor.endOfDay(Day(12))
+        endOfDay.close(Day(12))
         assertEquals(listOf(aed("2.40"), aed("7.20")), ledger.capitalizations().map { it.amount })
         assertEquals(firstPosting, ledger.capitalizations().first())
         assertEquals(aed("0.80"), ledger.interest(ACC_001, Day(6)))
@@ -79,10 +79,10 @@ class InterestIntervalTest {
     @Test
     fun `closed booking days remain rejected after first cycle`() {
         val ledger = ledger()
-        val processor = EventProcessor(ledger)
-        processor.endOfDay(Day(7))
-        processor.process(Event.Credit(EventId("closed"), ACC_001, Day(7), Day(7), aed("10.00")))
-        processor.process(Event.Credit(EventId("next"), ACC_001, Day(8), Day(8), aed("10.00")))
+        val endOfDay = EndOfDayProcessor(ledger)
+        endOfDay.close(Day(7))
+        ledger.apply(Event.Credit(EventId("closed"), ACC_001, Day(7), Day(7), aed("10.00")))
+        ledger.apply(Event.Credit(EventId("next"), ACC_001, Day(8), Day(8), aed("10.00")))
         assertEquals(RejectionReason.BOOKING_DAY_CLOSED, ledger.repo.rejections().single().reason)
         assertEquals(listOf(EventId("next")), ledger.repo.entries().mapNotNull { it.sourceEvent })
     }

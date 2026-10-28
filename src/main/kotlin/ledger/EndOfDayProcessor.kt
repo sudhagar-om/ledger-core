@@ -3,36 +3,30 @@ package ledger
 import ledger.model.AccountId
 import ledger.model.DailyReport
 import ledger.model.Day
-import ledger.model.Event
 import ledger.model.data.EntryType
 
 /**
- * The ledger's entry point. It takes two kinds of input, both decided by the caller:
- *  - [process]: an event to book.
- *  - [endOfDay]: a business day has ended for an account. Runs end-of-day processing
- *    and emits one [DailyReport] per closed day.
+ * End-of-day processing: told that a business day has ended for an account, it closes every
+ * still-open day through it and emits one [DailyReport] per closed day.
  *
- * It never infers that a day has ended from the events it sees; that belongs to whoever
- * drives it (an end-of-day scheduler in a live system, [EventStream] for the sample).
- * It never accepts or rejects an event either; [LedgerCore.apply] makes every such decision.
+ * It never infers that a day has ended; that belongs to whoever drives it (an end-of-day
+ * scheduler in a live system, [EventStream] for the sample). Events do not pass through here;
+ * they go straight to [LedgerCore.apply].
  */
-class EventProcessor(val ledger: LedgerCore, private val onReport: (DailyReport) -> Unit = {}) {
+class EndOfDayProcessor(private val ledger: LedgerCore, private val onReport: (DailyReport) -> Unit = {}) {
     private val repo = ledger.repo
     private val reports = mutableListOf<DailyReport>()
 
     fun reports(): List<DailyReport> = reports.toList()
     fun closedThrough(accountId: AccountId): Day? = repo.accountState(accountId).closedThrough
 
-    /** Hands the event to the ledger, which decides whether to apply or reject it. */
-    fun process(event: Event) = ledger.apply(event)
-
     /** End of [day] for every account. */
-    fun endOfDay(day: Day) {
-        repo.accountIds().forEach { endOfDay(it, day) }
+    fun close(day: Day) {
+        repo.accountIds().forEach { close(it, day) }
     }
 
     /** Closes every still-open day through [day], so a missed close is caught up. Closed days are skipped. */
-    fun endOfDay(accountId: AccountId, day: Day) {
+    fun close(accountId: AccountId, day: Day) {
         var next = Day((repo.accountState(accountId).closedThrough?.number ?: (ledger.firstDay.number - 1)) + 1)
         while (next <= day) {
             ledger.closeDay(accountId, next)

@@ -19,8 +19,8 @@ class Stepper(private val events: List<Event> = Scenario.events) {
     private val repo = InMemoryLedgerRepository().also { initializeAccounts(it) }
     private val ledger = LedgerCore(repo)
     private val closedDays = mutableListOf<DailyReport>()
-    private val processor = EventProcessor(ledger) { closedDays += it }
-    private val stream = EventStream(processor)
+    private val endOfDay = EndOfDayProcessor(ledger) { closedDays += it }
+    private val stream = EventStream(ledger, endOfDay)
     /** The day the last step ran up to; balances in [viewAccounts] are as of this day. */
     private var currentDay = ledger.firstDay
 
@@ -32,7 +32,7 @@ class Stepper(private val events: List<Event> = Scenario.events) {
         }
         if (!prompt("[end] No more events. Close all accounts through ${Scenario.reportThrough}")) return
         step(accounts = repo.accountIds(), asOf = Scenario.reportThrough, event = null) {
-            processor.endOfDay(Scenario.reportThrough)
+            endOfDay.close(Scenario.reportThrough)
         }
         println("Done.")
     }
@@ -185,7 +185,7 @@ class Stepper(private val events: List<Event> = Scenario.events) {
     private fun timeline(accountId: AccountId, asOf: Day, closingBefore: Map<Day, Money>) {
         val days = days(asOf)
         val currency = repo.account(accountId).currency
-        val closedThrough = processor.closedThrough(accountId)
+        val closedThrough = endOfDay.closedThrough(accountId)
         val holds = ledger.holdStatuses(accountId).entries.joinToString { "${it.key} ${it.value}" }.ifEmpty { "none" }
 
         fun blankIfZero(m: Money) = if (m.minorUnits == 0L) "" else ReportPrinter.signed(m)

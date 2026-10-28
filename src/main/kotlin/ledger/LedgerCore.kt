@@ -237,7 +237,7 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
 
     // ---------------------------------------------------------- end of day
 
-    /** Closes [today] for the account. Days close one at a time and in order; [EventProcessor] ensures it. */
+    /** Closes [today] for the account. Days close one at a time and in order; [EndOfDayProcessor] ensures it. */
     fun closeDay(accountId: AccountId, today: Day) {
         val state = repo.accountState(accountId)
         val closed = state.closedThrough

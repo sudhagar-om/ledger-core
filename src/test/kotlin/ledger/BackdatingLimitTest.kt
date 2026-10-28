@@ -18,7 +18,6 @@ import kotlin.test.assertTrue
 class BackdatingLimitTest {
     private val aed10 = Money.of("10.00", AED)
     private val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
-    private val processor = EventProcessor(ledger)
 
     private fun credit(valueDay: Int, authorization: BackdatedAuthorization? = null) = Event.Credit(
         id = EventId("C1"),
@@ -31,7 +30,7 @@ class BackdatingLimitTest {
 
     @Test
     fun `an event exactly at the limit keeps its value date`() {
-        processor.process(credit(valueDay = 5))
+        ledger.apply(credit(valueDay = 5))
         assertEquals(listOf(Day(5)), ledger.repo.entries().map { it.valueDay })
         assertTrue(ledger.repo.rejections().isEmpty())
         assertTrue(ledger.repo.alerts().isEmpty())
@@ -39,21 +38,21 @@ class BackdatingLimitTest {
 
     @Test
     fun `an event before the checkpoint without authorization is rejected`() {
-        processor.process(credit(valueDay = 4))
+        ledger.apply(credit(valueDay = 4))
         assertEquals(listOf(RejectionReason.BEFORE_CHECKPOINT), ledger.repo.rejections().map { it.reason })
         assertTrue(ledger.repo.entries().isEmpty())
     }
 
     @Test
     fun `an event before the checkpoint with an invalid authorization is rejected`() {
-        processor.process(credit(valueDay = 4, authorization = BackdatedAuthorization(reference = "BD-1", approvedBy = "")))
+        ledger.apply(credit(valueDay = 4, authorization = BackdatedAuthorization(reference = "BD-1", approvedBy = "")))
         assertEquals(listOf(RejectionReason.BEFORE_CHECKPOINT), ledger.repo.rejections().map { it.reason })
         assertTrue(ledger.repo.entries().isEmpty())
     }
 
     @Test
     fun `an event before the checkpoint with a valid authorization is re-dated and alerted`() {
-        processor.process(credit(valueDay = 1, authorization = BackdatedAuthorization(reference = "BD-1", approvedBy = "ops")))
+        ledger.apply(credit(valueDay = 1, authorization = BackdatedAuthorization(reference = "BD-1", approvedBy = "ops")))
         assertTrue(ledger.repo.rejections().isEmpty())
         assertEquals(listOf(Day(5)), ledger.repo.entries().map { it.valueDay })
         val alert = ledger.repo.alerts().single()

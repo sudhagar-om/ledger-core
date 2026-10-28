@@ -23,16 +23,16 @@ class DailyBalancesTest {
     private fun checkedReplay(accounts: List<Account>, events: List<Event>, through: Day, closeEveryDay: Boolean) {
         val ledger = LedgerCore(InMemoryLedgerRepository(accounts))
         val reports = mutableListOf<DailyReport>()
-        val processor = EventProcessor(ledger) { report ->
+        val endOfDay = EndOfDayProcessor(ledger) { report ->
             reports += report
             val where = "${report.accountId} ${report.day}"
             assertEquals(ledger.closingBalance(report.accountId, report.day), report.closingLedgerBalance, "closing, $where")
             assertEquals(ledger.availableBalance(report.accountId, report.day), report.availableBalance, "available, $where")
         }
-        val stream = EventStream(processor)
+        val stream = EventStream(ledger, endOfDay)
         var lastDay = ledger.firstDay
         for (event in events) {
-            if (closeEveryDay && event.bookingDay > lastDay) processor.endOfDay(Day(event.bookingDay.number - 1))
+            if (closeEveryDay && event.bookingDay > lastDay) endOfDay.close(Day(event.bookingDay.number - 1))
             lastDay = event.bookingDay
             stream.feed(event)
             val id = event.accountId
@@ -42,7 +42,7 @@ class DailyBalancesTest {
                 assertEquals(ledger.availableBalance(id, day), ledger.liveAvailableBalance(id, day), "available after ${event.id}")
             }
         }
-        processor.endOfDay(through)
+        endOfDay.close(through)
 
         for (account in accounts) {
             val state = ledger.repo.accountState(account.id)

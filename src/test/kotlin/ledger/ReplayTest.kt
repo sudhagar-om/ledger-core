@@ -24,19 +24,19 @@ class ReplayTest {
     @Test
     fun `processing continues across recurring interest cycles and account switches`() {
         val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
-        val processor = EventProcessor(ledger)
+        val endOfDay = EndOfDayProcessor(ledger)
         fun credit(id: String, day: Int) = Event.Credit(
             id = EventId(id), accountId = ACC_001,
             bookingDay = Day(day), valueDay = Day(day), amount = aed("1000.00"),
         )
-        processor.process(credit("start", 1))
-        processor.process(Scenario.events.last()) // An event for another account does not close ACC-001.
-        processor.endOfDay(ACC_001, Day(1))
-        processor.process(credit("next", 2))
-        processor.endOfDay(Day(6))
-        processor.process(credit("continued", 7))
-        processor.endOfDay(Day(12))
-        processor.endOfDay(Day(12)) // A repeated end of day does not post twice.
+        ledger.apply(credit("start", 1))
+        ledger.apply(Scenario.events.last()) // An event for another account does not close ACC-001.
+        endOfDay.close(ACC_001, Day(1))
+        ledger.apply(credit("next", 2))
+        endOfDay.close(Day(6))
+        ledger.apply(credit("continued", 7))
+        endOfDay.close(Day(12))
+        endOfDay.close(Day(12)) // A repeated end of day does not post twice.
         val postings = ledger.repo.entries().filter {
             it.accountId == ACC_001 && it.type == EntryType.INTEREST_CAPITALIZATION
         }
@@ -51,7 +51,7 @@ class ReplayTest {
     @Test
     fun `replays the full event stream`() {
         val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
-        val reports = EventStream(EventProcessor(ledger) { print(ReportPrinter.format(it)); println() }).play(Scenario.events, through = Scenario.reportThrough)
+        val reports = EventStream(ledger, EndOfDayProcessor(ledger) { print(ReportPrinter.format(it)); println() }).play(Scenario.events, through = Scenario.reportThrough)
 
         assertEquals(expected = 12, actual = reports.size, message = "6 days x 2 accounts")
 
@@ -72,7 +72,7 @@ class ReplayTest {
     @Test
     fun `day 2 closing balance at end of day 5 before fees is -370`() {
         val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
-        val stream = EventStream(EventProcessor(ledger))
+        val stream = EventStream(ledger, EndOfDayProcessor(ledger))
         Scenario.events.takeWhile { it.id != EventId("E9") }.filter { it.accountId == ACC_001 }.forEach(stream::feed)
 
         // Day 5 is not closed yet, so no fee for Day 2 exists.
@@ -82,7 +82,7 @@ class ReplayTest {
     @Test
     fun `E7 triggers fees on days 2, 4 and 5 and E9 refunds all three`() {
         val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
-        EventStream(EventProcessor(ledger)).play(Scenario.events, through = Scenario.reportThrough)
+        EventStream(ledger, EndOfDayProcessor(ledger)).play(Scenario.events, through = Scenario.reportThrough)
         val fees = ledger.repo.entries().filter { it.accountId == ACC_001 && it.type in LedgerCore.FEE_TYPES }
 
         val charged = fees.filter { it.type == EntryType.OVERDRAFT_FEE }
@@ -97,7 +97,7 @@ class ReplayTest {
     @Test
     fun `settlement without authorization is debited and flagged`() {
         val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
-        EventStream(EventProcessor(ledger)).play(Scenario.events, through = Scenario.reportThrough)
+        EventStream(ledger, EndOfDayProcessor(ledger)).play(Scenario.events, through = Scenario.reportThrough)
 
         val e6 = ledger.repo.entries().single { it.sourceEvent == EventId("E6") }
         assertEquals(aed("-180.00"), e6.amount)
@@ -107,7 +107,7 @@ class ReplayTest {
     @Test
     fun `capitalized interest equals the sum of rounded daily accruals`() {
         val ledger = LedgerCore(InMemoryLedgerRepository(AccountConfiguration.accounts))
-        EventStream(EventProcessor(ledger)).play(Scenario.events, through = Scenario.reportThrough)
+        EventStream(ledger, EndOfDayProcessor(ledger)).play(Scenario.events, through = Scenario.reportThrough)
 
         val perDay = (Day(1)..Day(6)).map { ledger.interest(ACC_001, it) }
         assertEquals(listOf("0.10", "0.10", "0.26", "0.11", "0.11", "0.11").map(::aed), perDay)

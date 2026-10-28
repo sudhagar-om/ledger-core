@@ -8,8 +8,8 @@ fun main(args: Array<String>) {
     val repo = InMemoryLedgerRepository()
     initializeAccounts(repo)
     val ledger = LedgerCore(repo)
-    val processor = EventProcessor(ledger) { print(ReportPrinter.format(it)); println() }
-    EventStream(processor).play(Scenario.events, through = Scenario.reportThrough)
+    val endOfDay = EndOfDayProcessor(ledger) { print(ReportPrinter.format(it)); println() }
+    EventStream(ledger, endOfDay).play(Scenario.events, through = Scenario.reportThrough)
 
     println("=== Final ledger ===")
     print(ReportPrinter.ledgerTable(ledger.repo.entries()))
