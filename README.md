@@ -90,7 +90,7 @@ Any `view-` command takes an optional account filter, e.g. `view-entries ACC-001
 |---|---|
 | `ReplayTest` | the full stream: Day 2 at −370.00 before fees, E7's fees and E9's refunds, Auth-Z, interest summing exactly |
 | `OverdraftFeeTest` | one fee per value day across repeated closes; BHD gets an alert, not a fee |
-| `AuthorizationTest` | approval at exactly zero, decline by one fil, holds stacking, partial settlement, expiry |
+| `AuthorizationTest` | approval at exactly zero, decline by one fil, holds stacking, partial settlement, expiry, merchant release |
 | `RejectionTest` | unknown account, wrong currency, bad amounts, instalments that don't add up to the total, invalid reversals, duplicate auth ids |
 | `IdempotencyTest` | redelivered events are ignored; a reused id with different content is rejected |
 | `InterestIntervalTest` | capitalization cycles and back-dated adjustments after capitalization |

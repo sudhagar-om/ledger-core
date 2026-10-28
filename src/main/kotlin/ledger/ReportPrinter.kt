@@ -77,6 +77,7 @@ object ReportPrinter {
             is Event.Debit -> "DEBIT ${e.amount}"
             is Event.Authorization -> "AUTHORIZATION ${e.authId} hold ${e.amount}"
             is Event.Settlement -> "SETTLEMENT ${e.authId} for ${e.amount}"
+            is Event.AuthorizationRelease -> "RELEASE ${e.authId}"
             is Event.Reversal -> "REVERSAL of ${e.reverses}"
             is Event.InstalmentCredit ->
                 "CREDIT ${e.total} in ${e.instalments.size} instalments (${e.instalments.joinToString(" + ") { it.toPlainString() }})"

@@ -8,10 +8,12 @@ import ledger.model.EventId
 enum class HoldStatus {
     /** Approved and still reducing available balance. */
     ACTIVE,
-    /** Released because the matching settlement arrived, possibly after the hold expired. */
+    /** Released because the matching settlement arrived, possibly after the hold expired or was released. */
     SETTLED,
     /** Released at end of day once the hold outlived [ledger.Policy.holdExpiryDays] unsettled. */
     EXPIRED,
+    /** Released by the merchant before settlement (order cancelled, item out of stock). */
+    RELEASED,
     /** Authorization refused: available balance would have gone below zero. Never reduced available balance. */
     DECLINED,
 }

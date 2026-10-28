@@ -60,6 +60,20 @@ sealed interface Event {
         override val backdatedAuthorization: BackdatedAuthorization? = null,
     ) : Event
 
+    /**
+     * Merchant gives up an active hold without capturing it: the order was cancelled or the
+     * item was out of stock. Only frees available balance; no ledger entry.
+     * See AMBIGUITIES.md, Authorization Hold & Settlement.
+     */
+    data class AuthorizationRelease(
+        override val id: EventId,
+        override val accountId: AccountId,
+        override val bookingDay: Day,
+        override val valueDay: Day,
+        val authId: AuthId,
+        override val backdatedAuthorization: BackdatedAuthorization? = null,
+    ) : Event
+
     /** Undoes the ledger effect of an earlier event by appending compensating entries. */
     data class Reversal(
         override val id: EventId,

@@ -120,6 +120,7 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
                 }
             is Event.Authorization -> authorize(dated)
             is Event.Settlement -> settle(dated)
+            is Event.AuthorizationRelease -> release(dated)
             is Event.Reversal -> reverse(dated)
         }
     }
@@ -182,9 +183,22 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
         transition(event = event, authId = event.authId, status = status)
     }
 
+    /** Merchant cancels an active hold; its amount goes back to available balance. */
+    private fun release(event: Event.AuthorizationRelease) {
+        val status = holdStatus(event.accountId, event.authId)
+        if (status != HoldStatus.ACTIVE) {
+            return reject(
+                event = event,
+                reason = RejectionReason.HOLD_NOT_ACTIVE,
+                message = "${event.authId} is ${status ?: "never authorized"}; only an active hold can be released",
+            )
+        }
+        transition(event = event, authId = event.authId, status = HoldStatus.RELEASED)
+    }
+
     /**
-     * Settlements are facts, not requests: always debited. A late settlement of an expired
-     * hold is still matched, but flagged since its amount was no longer reserved. A settlement
+     * Settlements are facts, not requests: always debited. A late settlement of an expired or
+     * released hold is still matched, but flagged since its amount was no longer reserved. A settlement
      * over its active hold is normal within [Policy.settlementOverageTolerance] (tips) and
      * flagged beyond it. Under-settlement releases the whole hold. See AMBIGUITIES.md.
      */
@@ -203,12 +217,12 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
                     )
                 }
             }
-            HoldStatus.EXPIRED -> {
+            HoldStatus.EXPIRED, HoldStatus.RELEASED -> {
                 transition(event = event, authId = event.authId, status = HoldStatus.SETTLED)
                 alert(
                     event = event,
-                    kind = AlertKind.SETTLEMENT_AFTER_HOLD_EXPIRY,
-                    message = "${event.authId} had expired; ${event.amount} debited without a reserved hold",
+                    kind = if (status == HoldStatus.EXPIRED) AlertKind.SETTLEMENT_AFTER_HOLD_EXPIRY else AlertKind.SETTLEMENT_AFTER_HOLD_RELEASE,
+                    message = "${event.authId} had been ${status.name.lowercase()}; ${event.amount} debited without a reserved hold",
                 )
             }
             else -> alert(
@@ -539,6 +553,7 @@ private fun Event.withValueDay(day: Day): Event = when (this) {
     is Event.Debit -> copy(valueDay = day)
     is Event.Authorization -> copy(valueDay = day)
     is Event.Settlement -> copy(valueDay = day)
+    is Event.AuthorizationRelease -> copy(valueDay = day)
     is Event.Reversal -> copy(valueDay = day)
     is Event.InstalmentCredit -> copy(valueDay = day)
 }
@@ -550,6 +565,7 @@ private val Event.amounts: List<Money>
         is Event.Debit -> listOf(amount)
         is Event.Authorization -> listOf(amount)
         is Event.Settlement -> listOf(amount)
+        is Event.AuthorizationRelease -> emptyList()
         is Event.InstalmentCredit -> listOf(total) + instalments
         is Event.Reversal -> emptyList()
     }

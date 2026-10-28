@@ -9,6 +9,7 @@ import ledger.model.EventId
 import ledger.model.Money
 import ledger.model.data.AlertKind
 import ledger.model.data.HoldStatus
+import ledger.model.data.RejectionReason
 import ledger.repo.InMemoryLedgerRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,6 +30,9 @@ class AuthorizationTest {
     )
     private fun settle(authId: String, amount: String, on: Day = day) = ledger.apply(
         Event.Settlement(id = EventId("settle-$authId"), accountId = ACC_001, bookingDay = on, valueDay = on, authId = AuthId(authId), amount = aed(amount))
+    )
+    private fun release(authId: String, on: Day = day) = ledger.apply(
+        Event.AuthorizationRelease(id = EventId("release-$authId"), accountId = ACC_001, bookingDay = on, valueDay = on, authId = AuthId(authId))
     )
     private fun status(authId: String) = ledger.holdStatus(ACC_001, AuthId(authId))
 
@@ -118,5 +122,35 @@ class AuthorizationTest {
         assertEquals(HoldStatus.SETTLED, status("A1"))
         assertEquals(ledger.closingBalance(ACC_001, Day(8)) - aed("40.00"), ledger.closingBalance(ACC_001, Day(9)))
         assertEquals(AlertKind.SETTLEMENT_AFTER_HOLD_EXPIRY, ledger.repo.alerts().single().kind)
+    }
+
+    @Test
+    fun `merchant release frees the hold without touching the ledger`() {
+        authorize(authId = "A1", amount = "40.00")
+        release(authId = "A1")
+        assertEquals(HoldStatus.RELEASED, status("A1"))
+        assertEquals(aed("100.00"), ledger.closingBalance(ACC_001, day))
+        assertEquals(aed("100.00"), ledger.availableBalance(ACC_001, day))
+        assertTrue(ledger.repo.entries().none { it.sourceEvent == EventId("release-A1") })
+    }
+
+    @Test
+    fun `release of a hold that is not active is rejected`() {
+        authorize(authId = "A1", amount = "500.00")
+        release(authId = "A1")
+        release(authId = "unknown")
+        assertEquals(HoldStatus.DECLINED, status("A1"))
+        assertEquals(listOf(RejectionReason.HOLD_NOT_ACTIVE, RejectionReason.HOLD_NOT_ACTIVE), ledger.repo.rejections().map { it.reason })
+    }
+
+    @Test
+    fun `settlement after the merchant released the hold is debited, matched and flagged`() {
+        authorize(authId = "A1", amount = "40.00")
+        release(authId = "A1")
+        settle(authId = "A1", amount = "40.00", on = Day(2))
+        assertEquals(HoldStatus.SETTLED, status("A1"))
+        assertEquals(aed("60.00"), ledger.closingBalance(ACC_001, Day(2)))
+        assertEquals(aed("60.00"), ledger.availableBalance(ACC_001, Day(2)))
+        assertEquals(AlertKind.SETTLEMENT_AFTER_HOLD_RELEASE, ledger.repo.alerts().single().kind)
     }
 }

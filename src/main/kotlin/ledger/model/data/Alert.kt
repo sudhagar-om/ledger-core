@@ -10,6 +10,8 @@ enum class AlertKind {
     SETTLEMENT_WITHOUT_AUTHORIZATION,
     /** Settlement matched a hold that had already expired, so its amount was no longer reserved. See AMBIGUITIES.md. */
     SETTLEMENT_AFTER_HOLD_EXPIRY,
+    /** Settlement matched a hold the merchant had released, so its amount was no longer reserved. See AMBIGUITIES.md. */
+    SETTLEMENT_AFTER_HOLD_RELEASE,
     /** Settlement exceeded its active hold by more than [ledger.Policy.settlementOverageTolerance]; the excess was never reserved. See AMBIGUITIES.md. */
     SETTLEMENT_EXCEEDS_AUTHORIZATION,
     /** Closing balance went negative but the spec gives no fee for the currency; no fee charged. See AMBIGUITIES.md. */

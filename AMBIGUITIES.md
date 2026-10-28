@@ -150,6 +150,10 @@ Another question regarding holds that are not specified is how long do we keep a
 
 A settlement arriving after expiry, however, is still accepted, as settlements can be delayed for a variety of reasons. But we will raise an alert, since the balance it debits was no longer reserved.
 
+Sometimes the user buys and then cancels the order, or the item is out of stock. In such cases the merchant may decide to release the hold. We will release the hold and give the amount back to available balance. Nothing goes to the ledger, as no money moved.
+
+What if the settlement still arrives after the hold is released? We will treat it the same as a settlement after expiry. We accept it and raise an alert, since the balance it debits was no longer reserved.
+
 The spec doesn't state a rule for a settlement whose amount differs from its hold, but the events settle for less: Auth-A is held for 200.00 and settles for 185.00, and the acceptance criteria say this settlement must be accepted. From that we infer that a settlement need not match its hold exactly.
 
 - Settled for less: this is the case the events show. We debit the settled amount and release the whole hold, so the difference goes back to available balance. No alert.

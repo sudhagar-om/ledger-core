@@ -18,6 +18,8 @@ enum class RejectionReason {
     /** Value date after the booking day. See AMBIGUITIES.md, Future-dated Entries. */
     FUTURE_VALUE_DATE,
     DUPLICATE_AUTHORIZATION,
+    /** Release of a hold that is not active: unknown, declined, expired, settled or already released. */
+    HOLD_NOT_ACTIVE,
     REVERSAL_TARGET_NOT_FOUND,
     ALREADY_REVERSED,
 }
