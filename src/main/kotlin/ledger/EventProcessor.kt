@@ -22,7 +22,7 @@ class EventProcessor(val ledger: LedgerCore, private val onReport: (DailyReport)
     private val reports = mutableListOf<DailyReport>()
 
     fun reports(): List<DailyReport> = reports.toList()
-    fun closedThrough(accountId: AccountId): Day? = repo.closedThrough(accountId)
+    fun closedThrough(accountId: AccountId): Day? = repo.accountState(accountId).closedThrough
 
     /**
      * Idempotent by event id: an identical redelivery is a no-op, and a different event
@@ -48,7 +48,7 @@ class EventProcessor(val ledger: LedgerCore, private val onReport: (DailyReport)
         val accountId = event.accountId
         if (!repo.hasAccount(accountId)) return ledger.apply(event)
 
-        val closed = repo.closedThrough(accountId)
+        val closed = repo.accountState(accountId).closedThrough
         if ((closed != null && event.bookingDay <= closed) || event.bookingDay < ledger.firstDay) {
             return ledger.reject(
                 event = event,
@@ -66,13 +66,12 @@ class EventProcessor(val ledger: LedgerCore, private val onReport: (DailyReport)
 
     /** Closes every still-open day through [day], so a missed close is caught up. Closed days are skipped. */
     fun endOfDay(accountId: AccountId, day: Day) {
-        var next = Day((repo.closedThrough(accountId)?.number ?: (ledger.firstDay.number - 1)) + 1)
+        var next = Day((repo.accountState(accountId).closedThrough?.number ?: (ledger.firstDay.number - 1)) + 1)
         while (next <= day) {
             ledger.closeDay(accountId, next)
             val report = report(accountId, next)
             reports += report
             onReport(report)
-            repo.markClosed(accountId, next)
             next = Day(next.number + 1)
         }
     }

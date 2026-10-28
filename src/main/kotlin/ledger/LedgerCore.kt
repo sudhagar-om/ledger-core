@@ -21,7 +21,7 @@ import ledger.repo.LedgerRepository
 
 /**
  * The ledger's business logic. It keeps no state of its own: every record lives in
- * [repo], along with each account's [DailyBalances], which this class keeps in step
+ * [repo], along with each account's [AccountState], which this class keeps in step
  * with the entries it appends.
  *
  * Two kinds of work happen here:
@@ -39,7 +39,7 @@ import ledger.repo.LedgerRepository
  */
 class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT, val firstDay: Day = Day(1)) {
 
-    /** Entries valued before [firstDay] share this one row of the daily balances. */
+    /** Entries valued before [firstDay] share this one row of the daily state. */
     private val beforeFirstDay = Day(firstDay.number - 1)
 
     // ---------------------------------------------------------------- events
@@ -209,23 +209,26 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
 
     /** Closes [today] for the account. Days close one at a time and in order; [EventProcessor] ensures it. */
     fun closeDay(accountId: AccountId, today: Day) {
+        val state = repo.accountState(accountId)
+        val closed = state.closedThrough
+        require(closed == null || today > closed) { "$accountId already closed through $closed" }
         reassessOverdraftFees(accountId, today)
         if ((today.number - firstDay.number + 1) % policy.interestCapitalizationIntervalDays == 0) capitalizeInterest(accountId, today)
         expireHolds(accountId, today)
 
-        val balances = repo.dailyBalances(accountId)
-        val row = balances.row(today)
+        val row = state.row(today)
         row.closingAtClose = row.closingNow
-        balances.unsettled.removeAll { it.valueDay <= today }
-        balances.settledThrough = today
-        balances.dirtyFrom = null
+        state.unsettled.removeAll { it.valueDay <= today }
+        state.closedThrough = today
+        state.dirtyFrom = null
     }
 
     /** Releases active holds that have locked available balance for [Policy.holdExpiryDays]. */
     private fun expireHolds(accountId: AccountId, today: Day) {
-        repo.activeHolds(accountId)
+        activeHolds(accountId)
             .filter { today.number - it.placedOn.number + 1 >= policy.holdExpiryDays }
             .forEach {
+                setHoldStatus(accountId = accountId, authId = it.authId, status = HoldStatus.EXPIRED)
                 repo.add(
                     HoldTransition(
                         accountId = accountId,
@@ -248,12 +251,12 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
      */
     private fun reassessOverdraftFees(accountId: AccountId, today: Day) {
         val account = repo.account(accountId)
-        val balances = repo.dailyBalances(accountId)
+        val state = repo.accountState(accountId)
         val feeAmount = policy.overdraftFees[account.currency]
-        val from = maxOf(minOf(balances.dirtyFrom ?: today, today), beforeFirstDay)
-        var carried = balances.rows.lowerEntry(from.number)?.value?.closingNow ?: account.openingBalance
+        val from = maxOf(minOf(state.dirtyFrom ?: today, today), beforeFirstDay)
+        var carried = state.rows.lowerEntry(from.number)?.value?.closingNow ?: account.openingBalance
         for (day in from..today) {
-            val row = balances.row(day)
+            val row = state.row(day)
             val balance = carried + row.postings + row.capitalized
             if (day >= firstDay) assessFee(account = account, row = row, day = day, today = today, balance = balance, feeAmount = feeAmount)
             row.closingNow = balance + row.fees
@@ -312,11 +315,11 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
      */
     private fun capitalizeInterest(accountId: AccountId, today: Day) {
         val account = repo.account(accountId)
-        val balances = repo.dailyBalances(accountId)
-        val todayRow = balances.row(today)
+        val state = repo.accountState(accountId)
+        val todayRow = state.row(today)
         if (todayRow.capitalized != Money.zero(account.currency)) return
-        val earned = sum(account, balances.rows.subMap(firstDay.number, true, today.number, true).values.map { it.interest })
-        val alreadyCapitalized = sum(account, balances.rows.values.map { it.capitalized })
+        val earned = sum(account, state.rows.subMap(firstDay.number, true, today.number, true).values.map { it.interest })
+        val alreadyCapitalized = sum(account, state.rows.values.map { it.capitalized })
         val outstanding = earned - alreadyCapitalized
         if (outstanding != Money.zero(account.currency)) {
             postSystem(
@@ -341,16 +344,16 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
      */
     fun liveBalance(accountId: AccountId, day: Day): Money {
         val account = repo.account(accountId)
-        val balances = repo.dailyBalances(accountId)
-        val settled = balances.settledThrough
-        require(settled == null || day >= settled) { "$accountId is closed through $settled; use closingBalance for $day" }
-        val base = settled?.let { balances.row(it).closingNow } ?: account.openingBalance
-        return base + sum(account, balances.unsettled.filter { it.valueDay <= day }.map { it.amount })
+        val state = repo.accountState(accountId)
+        val closed = state.closedThrough
+        require(closed == null || day >= closed) { "$accountId is closed through $closed; use closingBalance for $day" }
+        val base = closed?.let { state.row(it).closingNow } ?: account.openingBalance
+        return base + sum(account, state.unsettled.filter { it.valueDay <= day }.map { it.amount })
     }
 
     fun liveAvailableBalance(accountId: AccountId, day: Day): Money {
         val account = repo.account(accountId)
-        val held = sum(account, repo.activeHolds(accountId).map { it.amount })
+        val held = sum(account, activeHolds(accountId).map { it.amount })
         return liveBalance(accountId, day) - held
     }
 
@@ -426,11 +429,11 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
         )
     }
 
-    /** Appends [entry] and adds it to its value day in the account's daily balances. */
+    /** Appends [entry] and adds it to its value day in the account's daily state. */
     private fun append(entry: LedgerEntry) {
         repo.add(entry)
-        val balances = repo.dailyBalances(entry.accountId)
-        val row = balances.row(maxOf(entry.valueDay, beforeFirstDay))
+        val state = repo.accountState(entry.accountId)
+        val row = state.row(maxOf(entry.valueDay, beforeFirstDay))
         when (entry.type) {
             EntryType.OVERDRAFT_FEE -> {
                 row.fees += entry.amount
@@ -443,11 +446,12 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
             EntryType.INTEREST_CAPITALIZATION -> row.capitalized += entry.amount
             else -> row.postings += entry.amount
         }
-        balances.unsettled += entry
-        balances.dirtyFrom = minOf(balances.dirtyFrom ?: entry.valueDay, entry.valueDay)
+        state.unsettled += entry
+        state.dirtyFrom = minOf(state.dirtyFrom ?: entry.valueDay, entry.valueDay)
     }
 
     private fun transition(event: Event, authId: AuthId, status: HoldStatus) {
+        setHoldStatus(accountId = event.accountId, authId = authId, status = status)
         repo.add(
             HoldTransition(
                 accountId = event.accountId,
@@ -457,6 +461,17 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
                 causedBy = event.id,
             )
         )
+    }
+
+    /** The account's ACTIVE holds, from its state rather than a scan of every hold it has had. */
+    private fun activeHolds(accountId: AccountId): List<Hold> =
+        repo.accountState(accountId).activeHolds.map { repo.hold(accountId, it) ?: error("No hold $it for $accountId") }
+
+    /** Sets the hold's status and keeps the account's active holds in step. Does not log a transition. */
+    private fun setHoldStatus(accountId: AccountId, authId: AuthId, status: HoldStatus) {
+        repo.updateHoldStatus(accountId, authId, status)
+        val active = repo.accountState(accountId).activeHolds
+        if (status == HoldStatus.ACTIVE) active += authId else active -= authId
     }
 
     private fun sum(account: Account, amounts: List<Money>): Money =

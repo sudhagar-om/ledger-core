@@ -1,16 +1,18 @@
 package ledger.model.data
 
+import ledger.model.AuthId
 import ledger.model.Day
 import ledger.model.Money
 import java.util.TreeMap
 
 /**
- * One account's balance table by value day, kept up to date as entries are appended so that
- * balance queries and end of day never scan entries. It is a projection, not a record: the
- * one mutable model, and it can always be rebuilt by replaying the entries.
+ * One account's balance table by value day, how far it has closed, and which holds are
+ * active, kept up to date as entries and holds change so that balance queries and end of
+ * day never scan entries or past holds. It is a projection, not a record: it can always be
+ * rebuilt by replaying the entries and hold transitions.
  * [ledger.LedgerCore] decides what goes in it; this class only holds it.
  */
-class DailyBalances(val openingBalance: Money) {
+class AccountState(val openingBalance: Money) {
 
     /** Keyed by day number. */
     val rows = TreeMap<Int, DailyBalance>()
@@ -18,11 +20,17 @@ class DailyBalances(val openingBalance: Money) {
     /** Earliest value day changed since the last close; null if none. */
     var dirtyFrom: Day? = null
 
-    /** The last closed day: its [DailyBalance.closingNow] includes every entry with value day up to it. */
-    var settledThrough: Day? = null
+    /**
+     * The last business day closed; null if none yet. Only ever moves forward. Its
+     * [DailyBalance.closingNow] includes every entry with value day up to it.
+     */
+    var closedThrough: Day? = null
 
     /** Entries appended since the last close, plus earlier ones whose value day is still ahead of it. */
     val unsettled = mutableListOf<LedgerEntry>()
+
+    /** Holds with status ACTIVE, in the order they were placed. */
+    val activeHolds = LinkedHashSet<AuthId>()
 
     fun row(day: Day): DailyBalance = rows.getOrPut(day.number) { DailyBalance(Money.zero(openingBalance.currency)) }
 }

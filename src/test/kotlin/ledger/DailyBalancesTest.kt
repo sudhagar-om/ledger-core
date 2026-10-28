@@ -36,7 +36,7 @@ class DailyBalancesTest {
             lastDay = event.bookingDay
             stream.feed(event)
             val id = event.accountId
-            if (ledger.repo.hasAccount(id) && (ledger.repo.closedThrough(id)?.let { it < event.bookingDay } ?: true)) {
+            if (ledger.repo.hasAccount(id) && (ledger.repo.accountState(id).closedThrough?.let { it < event.bookingDay } ?: true)) {
                 val day = event.bookingDay
                 assertEquals(ledger.closingBalance(id, day), ledger.liveBalance(id, day), "balance after ${event.id}")
                 assertEquals(ledger.availableBalance(id, day), ledger.liveAvailableBalance(id, day), "available after ${event.id}")
@@ -45,9 +45,9 @@ class DailyBalancesTest {
         processor.endOfDay(through)
 
         for (account in accounts) {
-            val balances = ledger.repo.dailyBalances(account.id)
+            val state = ledger.repo.accountState(account.id)
             for (day in ledger.firstDay..through) {
-                val row = balances.row(day)
+                val row = state.row(day)
                 val where = "${account.id} $day"
                 assertEquals(ledger.closingBalance(account.id, day), row.closingNow, "closingNow, $where")
                 assertEquals(ledger.interest(account.id, day), row.interest, "interest, $where")

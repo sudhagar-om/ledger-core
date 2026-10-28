@@ -2,14 +2,14 @@ package ledger.repo
 
 import ledger.model.AccountId
 import ledger.model.AuthId
-import ledger.model.Day
 import ledger.model.Event
 import ledger.model.EventId
 import ledger.model.data.Account
 import ledger.model.data.Alert
-import ledger.model.data.DailyBalances
+import ledger.model.data.AccountState
 import ledger.model.data.EntryId
 import ledger.model.data.Hold
+import ledger.model.data.HoldStatus
 import ledger.model.data.HoldTransition
 import ledger.model.data.LedgerEntry
 import ledger.model.data.Rejection
@@ -18,8 +18,8 @@ import ledger.model.data.Rejection
  * The data layer: stores the ledger's records and looks them up by account. It holds no
  * business rules; [ledger.LedgerCore] does all the reasoning over these records. Records are
  * append-only: nothing is ever updated or removed. There are two exceptions: each account's
- * [DailyBalances], a projection of its entries that can be rebuilt from them, and each
- * [Hold]'s status, which follows its latest [HoldTransition].
+ * [AccountState], a projection of its entries that can be rebuilt from them, and each
+ * [Hold]'s status, explicitly updated by [ledger.LedgerCore].
  */
 interface LedgerRepository {
     /** Creates an account; rejects an ID that already exists. */
@@ -33,8 +33,10 @@ interface LedgerRepository {
 
     fun add(entry: LedgerEntry)
     fun add(hold: Hold)
-    /** Appends to the hold's history and sets the hold's status to [HoldTransition.status]. */
+    /** Appends a log record without changing the hold. */
     fun add(transition: HoldTransition)
+    /** Updates the hold's status; does not append a log record. */
+    fun updateHoldStatus(accountId: AccountId, authId: AuthId, status: HoldStatus)
     fun add(rejection: Rejection)
     fun add(alert: Alert)
 
@@ -43,8 +45,6 @@ interface LedgerRepository {
     /** Every hold the account has had, in the order they were placed. */
     fun holds(accountId: AccountId): List<Hold>
     fun hold(accountId: AccountId, authId: AuthId): Hold?
-    /** The account's holds with status ACTIVE, without looking at the others. */
-    fun activeHolds(accountId: AccountId): List<Hold>
     fun holdTransitions(accountId: AccountId): List<HoldTransition>
     fun rejections(): List<Rejection>
     fun rejections(accountId: AccountId): List<Rejection>
@@ -55,10 +55,6 @@ interface LedgerRepository {
     fun processedEvent(id: EventId): Event?
     fun markProcessed(event: Event)
 
-    /** The last business day closed for the account; null if none yet. Only ever moves forward. */
-    fun closedThrough(accountId: AccountId): Day?
-    fun markClosed(accountId: AccountId, day: Day)
-
-    /** The account's daily balances, created empty on first use. */
-    fun dailyBalances(accountId: AccountId): DailyBalances
+    /** The account's state, created empty on first use. */
+    fun accountState(accountId: AccountId): AccountState
 }

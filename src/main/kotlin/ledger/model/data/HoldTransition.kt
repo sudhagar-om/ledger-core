@@ -16,7 +16,7 @@ enum class HoldStatus {
     DECLINED,
 }
 
-/** One step in a [Hold]'s lifecycle, appended and never changed. Recording one updates [Hold.status]. */
+/** Append-only log record of a hold outcome, including system-generated expiry. No state changes on append. */
 data class HoldTransition(
     val accountId: AccountId,
     val authId: AuthId,

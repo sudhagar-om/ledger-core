@@ -70,7 +70,7 @@ class Stepper(private val events: List<Event> = Scenario.events) {
                 a.openingBalance.toPlainString(),
                 ledger.closingBalance(id, currentDay).toPlainString(),
                 ledger.availableBalance(id, currentDay).toPlainString(),
-                repo.closedThrough(id)?.toString() ?: "-",
+                repo.accountState(id).closedThrough?.toString() ?: "-",
             )
         },
         rightAligned = setOf(2, 3, 4),
