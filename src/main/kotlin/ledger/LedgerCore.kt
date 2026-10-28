@@ -18,6 +18,7 @@ import ledger.model.data.LedgerEntry
 import ledger.model.data.Rejection
 import ledger.model.data.RejectionReason
 import ledger.repo.LedgerRepository
+import java.math.BigDecimal
 
 /**
  * The ledger's business logic. It keeps no state of its own: every record lives in
@@ -183,12 +184,25 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
 
     /**
      * Settlements are facts, not requests: always debited. A late settlement of an expired
-     * hold is still matched, but flagged since its amount was no longer reserved. See AMBIGUITIES.md.
+     * hold is still matched, but flagged since its amount was no longer reserved. A settlement
+     * over its active hold is normal within [Policy.settlementOverageTolerance] (tips) and
+     * flagged beyond it. Under-settlement releases the whole hold. See AMBIGUITIES.md.
      */
     private fun settle(event: Event.Settlement) {
         post(event = event, type = EntryType.SETTLEMENT, amount = -event.amount, memo = "settles ${event.authId}")
         when (val status = holdStatus(event.accountId, event.authId)) {
-            HoldStatus.ACTIVE -> transition(event = event, authId = event.authId, status = HoldStatus.SETTLED)
+            HoldStatus.ACTIVE -> {
+                transition(event = event, authId = event.authId, status = HoldStatus.SETTLED)
+                val held = (repo.hold(event.accountId, event.authId) ?: error("No hold ${event.authId} for ${event.accountId}")).amount
+                val limit = held.toBigDecimal() * (BigDecimal.ONE + policy.settlementOverageTolerance)
+                if (event.amount.toBigDecimal() > limit) {
+                    alert(
+                        event = event,
+                        kind = AlertKind.SETTLEMENT_EXCEEDS_AUTHORIZATION,
+                        message = "${event.authId} held $held; ${event.amount} debited, ${event.amount - held} of it never reserved",
+                    )
+                }
+            }
             HoldStatus.EXPIRED -> {
                 transition(event = event, authId = event.authId, status = HoldStatus.SETTLED)
                 alert(

@@ -13,6 +13,7 @@ Configurable values are defined in `Policy.DEFAULT` ([Policy.kt](src/main/kotlin
 | Daily interest rate | 0.0004 | `Policy.dailyInterestRate` | spec (0.04%) |
 | Interest capitalization interval | 6 days | `Policy.interestCapitalizationIntervalDays` | derived from spec |
 | Hold expiry | 7 days | `Policy.holdExpiryDays` | assumption |
+| Settlement overage tolerance | 20% of the hold | `Policy.settlementOverageTolerance` | assumption |
 | Back-dating limit | 45 days | `Policy.backdatingLimitDays` | assumption |
 | AED precision | 2 decimals | `Currency.AED` | spec / ISO 4217 |
 | BHD precision | 3 decimals | `Currency.BHD` | spec / ISO 4217 |
@@ -55,6 +56,14 @@ The interval is configurable and repeats beyond the six-day window. `InterestInt
 The spec does not define a hold expiry period. The assumed expiry is 7 days: an unsettled hold placed on Day N is released at the close of Day N + 6. Auth-B, placed on Day 5, remains `ACTIVE` at the end of the six-day window.
 
 A late settlement is accepted and raises `SETTLEMENT_AFTER_HOLD_EXPIRY` (`AuthorizationTest`).
+
+## Settlement overage tolerance: 20%
+
+The spec does not say what happens when a settlement is larger than its hold. A settlement is always debited, but anything above the hold was never reserved, so it can take the account negative without an approval. A settlement more than 20% above its active hold raises `SETTLEMENT_EXCEEDS_AUTHORIZATION`. Up to 20% over is accepted silently.
+
+The usual cause of a legitimate overage is a tip added after authorization, and tips commonly run up to about 20%. At half the value, 10%, ordinary restaurant tips would raise alerts and train reviewers to ignore them. Twice the value, 40%, would let a settlement nearly half again the approved amount through unflagged.
+
+The comparison is exact: on a AED 40.00 hold, 48.00 is silent and 48.01 alerts (`AuthorizationTest`). A settlement below its hold releases the whole hold and raises nothing. Auth-A (hold 200.00, settled 185.00) is this case.
 
 ## Back-dating limit: 45 days
 

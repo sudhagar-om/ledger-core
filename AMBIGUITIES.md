@@ -150,6 +150,11 @@ Another question regarding holds that are not specified is how long do we keep a
 
 A settlement arriving after expiry, however, is still accepted, as settlements can be delayed for a variety of reasons. But we will raise an alert, since the balance it debits was no longer reserved.
 
+The spec doesn't state a rule for a settlement whose amount differs from its hold, but the events settle for less: Auth-A is held for 200.00 and settles for 185.00, and the acceptance criteria say this settlement must be accepted. From that we infer that a settlement need not match its hold exactly.
+
+- Settled for less: this is the case the events show. We debit the settled amount and release the whole hold, so the difference goes back to available balance. No alert.
+- Settled for more: the events have no example of this, so we extend the same reasoning. A tip added after authorization is the usual cause. We still debit the full amount, since a settlement can't be refused. Up to 20% over the hold is accepted silently. Beyond that, we raise an alert, because the excess was never reserved and could overdraw the account without anyone approving it.
+
 ## Instalment calculation
 We have a credit to an account of Rs. 10.000 and there is a note that says its posted as three equal instalments.
 

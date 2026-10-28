@@ -74,6 +74,24 @@ class AuthorizationTest {
     }
 
     @Test
+    fun `settlement up to the tolerance over the hold is accepted silently`() {
+        authorize(authId = "A1", amount = "40.00")
+        settle(authId = "A1", amount = "48.00")
+        assertEquals(HoldStatus.SETTLED, status("A1"))
+        assertEquals(aed("52.00"), ledger.closingBalance(ACC_001, day))
+        assertTrue(ledger.repo.alerts().isEmpty())
+    }
+
+    @Test
+    fun `settlement one fil beyond the tolerance is debited and flagged`() {
+        authorize(authId = "A1", amount = "40.00")
+        settle(authId = "A1", amount = "48.01")
+        assertEquals(HoldStatus.SETTLED, status("A1"))
+        assertEquals(aed("51.99"), ledger.closingBalance(ACC_001, day))
+        assertEquals(AlertKind.SETTLEMENT_EXCEEDS_AUTHORIZATION, ledger.repo.alerts().single().kind)
+    }
+
+    @Test
     fun `settlement of a declined authorization is debited and flagged`() {
         authorize(authId = "A1", amount = "500.00")
         settle(authId = "A1", amount = "500.00")
