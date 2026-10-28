@@ -7,7 +7,7 @@ import ledger.model.Currency.AED
 import ledger.model.Currency.BHD
 import ledger.model.Day
 import ledger.model.EntryType
-import ledger.model.ErrorKind
+import ledger.model.AlertKind
 import ledger.model.Event
 import ledger.model.EventId
 import ledger.model.HoldStatus
@@ -42,7 +42,8 @@ class ReplayTest {
         assertEquals(listOf(Day(6), Day(12)), postings.map { it.bookingDay })
         assertEquals(listOf(aed("4.40"), aed("7.20")), postings.map { it.amount })
         assertEquals(aed("0.80"), ledger.accruedInterest(ACC_001, Day(6)))
-        assertTrue(ledger.errors().isEmpty())
+        assertTrue(ledger.rejections().isEmpty())
+        assertTrue(ledger.alerts().isEmpty())
     }
 
     /** Full replay with the per-day output printed — this is the "see the output" test. */
@@ -57,6 +58,9 @@ class ReplayTest {
         assertEquals(aed("285.79"), ledger.closingBalance(ACC_001, Day(6)))
         assertEquals(HoldStatus.SETTLED, ledger.holdStatuses(ACC_001)[AuthId("Auth-A")])
         assertEquals(HoldStatus.DECLINED, ledger.holdStatuses(ACC_001)[AuthId("Auth-B")])
+        // A decline is reported through the hold status alone.
+        assertTrue(ledger.rejections().none { it.event == EventId("E8") })
+        assertTrue(ledger.alerts().none { it.event == EventId("E8") })
 
         // ACC-002: 10.000 in three instalments, then two days of interest at 0.004.
         val instalments = ledger.entries().filter { it.type == EntryType.INSTALMENT_CREDIT }.map { it.amount }
@@ -96,7 +100,7 @@ class ReplayTest {
 
         val e6 = ledger.entries().single { it.sourceEvent == EventId("E6") }
         assertEquals(aed("-180.00"), e6.amount)
-        assertTrue(ledger.errors().any { it.event == EventId("E6") && it.kind == ErrorKind.SETTLEMENT_WITHOUT_AUTHORIZATION })
+        assertTrue(ledger.alerts().any { it.event == EventId("E6") && it.kind == AlertKind.SETTLEMENT_WITHOUT_AUTHORIZATION })
     }
 
     @Test

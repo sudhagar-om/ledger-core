@@ -4,7 +4,7 @@ import ledger.model.AccountId
 import ledger.model.DailyReport
 import ledger.model.Day
 import ledger.model.EntryType
-import ledger.model.ErrorKind
+import ledger.model.RejectionReason
 import ledger.model.Event
 
 /**
@@ -32,7 +32,7 @@ class EventProcessor(val ledger: Ledger, private val onReport: (DailyReport) -> 
         if ((closed != null && event.bookingDay <= closed) || event.bookingDay < ledger.firstDay) {
             return ledger.reject(
                 event = event,
-                kind = ErrorKind.BOOKING_DAY_CLOSED,
+                reason = RejectionReason.BOOKING_DAY_CLOSED,
                 message = "booked on ${event.bookingDay} but $accountId is closed through ${closed ?: "nothing"}",
             )
         }
@@ -69,7 +69,8 @@ class EventProcessor(val ledger: Ledger, private val onReport: (DailyReport) -> 
             interestAccruals = ledger.accrualsBookedOn(accountId, day),
             interestCapitalized = booked.firstOrNull { it.type == EntryType.INTEREST_CAPITALIZATION },
             holds = ledger.holdStatuses(accountId),
-            errors = ledger.errorsOn(accountId, day),
+            rejections = ledger.rejectionsOn(accountId, day),
+            alerts = ledger.alertsOn(accountId, day),
         )
     }
 }

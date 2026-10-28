@@ -5,7 +5,7 @@ import ledger.model.Account
 import ledger.model.Currency.AED
 import ledger.model.Day
 import ledger.model.EntryType
-import ledger.model.ErrorKind
+import ledger.model.RejectionReason
 import ledger.model.Event
 import ledger.model.EventId
 import ledger.model.Money
@@ -46,7 +46,8 @@ class InterestIntervalTest {
         assertEquals(aed("0.40"), ledger.accruedInterest(ACC_001, Day(10)))
         // After enough daily postings the rounded daily accrual increases.
         assertEquals(aed("0.41"), ledger.accruedInterest(ACC_001, Day(50)))
-        assertTrue(ledger.errors().isEmpty())
+        assertTrue(ledger.rejections().isEmpty())
+        assertTrue(ledger.alerts().isEmpty())
     }
 
     @Test
@@ -70,7 +71,8 @@ class InterestIntervalTest {
         assertEquals(listOf(aed("2.40"), aed("7.20")), ledger.capitalizations().map { it.amount })
         assertEquals(firstPosting, ledger.capitalizations().first())
         assertEquals(aed("0.80"), ledger.accruedInterest(ACC_001, Day(6)))
-        assertTrue(ledger.errors().isEmpty())
+        assertTrue(ledger.rejections().isEmpty())
+        assertTrue(ledger.alerts().isEmpty())
     }
 
     @Test
@@ -80,7 +82,7 @@ class InterestIntervalTest {
         processor.endOfDay(Day(7))
         processor.process(Event.Credit(EventId("closed"), ACC_001, Day(7), Day(7), aed("10.00")))
         processor.process(Event.Credit(EventId("next"), ACC_001, Day(8), Day(8), aed("10.00")))
-        assertEquals(ErrorKind.BOOKING_DAY_CLOSED, ledger.errors().single().kind)
+        assertEquals(RejectionReason.BOOKING_DAY_CLOSED, ledger.rejections().single().reason)
         assertEquals(listOf(EventId("next")), ledger.entries().mapNotNull { it.sourceEvent })
     }
 

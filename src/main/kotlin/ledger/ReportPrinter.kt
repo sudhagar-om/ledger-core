@@ -1,11 +1,12 @@
 package ledger
 
+import ledger.model.Alert
 import ledger.model.DailyReport
 import ledger.model.Event
 import ledger.model.InterestAccrual
 import ledger.model.LedgerEntry
-import ledger.model.LedgerError
 import ledger.model.Money
+import ledger.model.Rejection
 
 object ReportPrinter {
     /** Marks rows produced by end-of-day processing rather than by an input event. */
@@ -29,9 +30,13 @@ object ReportPrinter {
         } else {
             append(Table.render(headers = listOf("From") + ENTRY_HEADERS, rows = rows, rightAligned = setOf(3)))
         }
-        if (r.errors.isNotEmpty()) {
-            appendLine("Errors")
-            append(errorTable(r.errors))
+        if (r.rejections.isNotEmpty()) {
+            appendLine("Rejected events")
+            append(rejectionTable(r.rejections))
+        }
+        if (r.alerts.isNotEmpty()) {
+            appendLine("Alerts")
+            append(alertTable(r.alerts))
         }
     }
 
@@ -53,9 +58,14 @@ object ReportPrinter {
         rightAligned = setOf(3),
     )
 
-    fun errorTable(errors: List<LedgerError>): String = Table.render(
-        headers = listOf("Account", "Day", "Event", "Kind", "Message"),
-        rows = errors.map { listOf(it.accountId.toString(), it.day.toString(), it.event?.value ?: "-", it.kind.name, it.message) },
+    fun rejectionTable(rejections: List<Rejection>): String = Table.render(
+        headers = listOf("Account", "Day", "Event", "Reason", "Message"),
+        rows = rejections.map { listOf(it.accountId.toString(), it.day.toString(), it.event.value, it.reason.name, it.message) },
+    )
+
+    fun alertTable(alerts: List<Alert>): String = Table.render(
+        headers = listOf("Account", "Day", "From", "Alert", "Message"),
+        rows = alerts.map { listOf(it.accountId.toString(), it.day.toString(), it.event?.value ?: END_OF_DAY, it.kind.name, it.message) },
     )
 
     val ENTRY_HEADERS = listOf("#", "Type", "Amount", "Value day", "Note")

@@ -13,5 +13,6 @@ data class DailyReport(
     val interestAccruals: List<InterestAccrual>,
     val interestCapitalized: LedgerEntry?,
     val holds: Map<AuthId, HoldStatus>,
-    val errors: List<LedgerError>,
+    val rejections: List<Rejection>,
+    val alerts: List<Alert>,
 )

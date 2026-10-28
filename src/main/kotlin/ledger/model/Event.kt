@@ -13,7 +13,7 @@ value class AuthId(val value: String) {
 /**
  * Input to the ledger: what arrived on the stream. Events are immutable and are
  * never stored as balances themselves — the ledger turns them into [LedgerEntry]s,
- * [Hold]s and [LedgerError]s.
+ * [Hold]s, [Rejection]s and [Alert]s.
  *
  * bookingDay is assigned by the upstream system when it received the event and is
  * authoritative for processing order. valueDay is when the money is economically effective.

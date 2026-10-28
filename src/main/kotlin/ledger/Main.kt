@@ -12,6 +12,9 @@ fun main(args: Array<String>) {
     println("=== Final ledger ===")
     print(ReportPrinter.ledgerTable(ledger.entries()))
     println()
-    println("=== All errors ===")
-    print(ReportPrinter.errorTable(ledger.errors()))
+    println("=== All rejected events ===")
+    print(ReportPrinter.rejectionTable(ledger.rejections()))
+    println()
+    println("=== All alerts ===")
+    print(ReportPrinter.alertTable(ledger.alerts()))
 }

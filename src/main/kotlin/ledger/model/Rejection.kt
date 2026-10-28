@@ -1,0 +1,22 @@
+package ledger.model
+
+/** Why an event was refused. Nothing was posted and no hold changed; the sender must correct it and resend. */
+enum class RejectionReason {
+    UNKNOWN_ACCOUNT,
+    CURRENCY_MISMATCH,
+    INVALID_AMOUNT,
+    /** Booking day already closed for the account, or before the ledger start day. */
+    BOOKING_DAY_CLOSED,
+    DUPLICATE_AUTHORIZATION,
+    REVERSAL_TARGET_NOT_FOUND,
+    ALREADY_REVERSED,
+}
+
+/** An input event the ledger refused. */
+data class Rejection(
+    val accountId: AccountId,
+    val day: Day,
+    val reason: RejectionReason,
+    val event: EventId,
+    val message: String,
+)

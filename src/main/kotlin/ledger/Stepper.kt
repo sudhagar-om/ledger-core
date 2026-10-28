@@ -9,7 +9,7 @@ import ledger.model.Money
 
 /**
  * Interactive walkthrough: one event per Enter. Each step shows the days the event closed
- * and what each close posted, what the event itself posted, any errors, and a value-day
+ * and what each close posted, what the event itself posted, any rejections or alerts, and a value-day
  * table of the account so back-dated changes are visible.
  * Type q + Enter to quit.
  */
@@ -40,14 +40,16 @@ class Stepper(private val events: List<Event> = Scenario.events) {
 
     private fun step(accounts: List<AccountId>, asOf: Day, event: Event?, action: () -> Unit) {
         val entriesBefore = ledger.entries().size
-        val errorsBefore = ledger.errors().size
+        val rejectionsBefore = ledger.rejections().size
+        val alertsBefore = ledger.alerts().size
         val closingBefore = accounts.associateWith { id -> days(asOf).associateWith { ledger.closingBalance(id, it) } }
         closedDays.clear()
 
         action()
 
         val newEntries = ledger.entries().drop(entriesBefore)
-        val newErrors = ledger.errors().drop(errorsBefore)
+        val newRejections = ledger.rejections().drop(rejectionsBefore)
+        val newAlerts = ledger.alerts().drop(alertsBefore)
         println()
 
         closedDays.groupBy { it.accountId }.forEach { (accountId, reports) ->
@@ -82,9 +84,15 @@ class Stepper(private val events: List<Event> = Scenario.events) {
             }
         }
 
-        if (newErrors.isNotEmpty()) {
-            println("  Errors")
-            print(indent(ReportPrinter.errorTable(newErrors)))
+        if (newRejections.isNotEmpty()) {
+            println("  Rejected events")
+            print(indent(ReportPrinter.rejectionTable(newRejections)))
+            println()
+        }
+
+        if (newAlerts.isNotEmpty()) {
+            println("  Alerts")
+            print(indent(ReportPrinter.alertTable(newAlerts)))
             println()
         }
 

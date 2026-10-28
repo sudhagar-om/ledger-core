@@ -2,11 +2,12 @@ package ledger
 
 import ledger.model.Account
 import ledger.model.AccountId
+import ledger.model.Alert
+import ledger.model.AlertKind
 import ledger.model.AuthId
 import ledger.model.Day
 import ledger.model.EntryId
 import ledger.model.EntryType
-import ledger.model.ErrorKind
 import ledger.model.Event
 import ledger.model.EventId
 import ledger.model.Hold
@@ -15,14 +16,16 @@ import ledger.model.HoldTransition
 import ledger.model.InterestAccrual
 import ledger.model.LedgerEntry
 import ledger.model.Money
-import ledger.model.LedgerError
+import ledger.model.Rejection
+import ledger.model.RejectionReason
 
 /**
  * The in-memory ledger. Every collection here is append-only: nothing is ever
  * removed or replaced. Balances are always derived by summing entries.
  *
  * Two kinds of work happen here:
- *  - [apply] turns an input event into entries / holds / errors.
+ *  - [apply] turns an input event into entries and holds, or a [Rejection]; an event
+ *    that is applied but needs review also raises an [Alert].
  *  - [closeDay] runs end-of-day processing: overdraft fees and interest are
  *    re-assessed for every value day up to today, so back-dated entries are
  *    picked up (see AMBIGUITIES.md, Retrospective Overdraft Fees).
@@ -33,7 +36,8 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
     private val holds = mutableListOf<Hold>()
     private val holdTransitions = mutableListOf<HoldTransition>()
     private val accruals = mutableListOf<InterestAccrual>()
-    private val errors = mutableListOf<LedgerError>()
+    private val rejections = mutableListOf<Rejection>()
+    private val alerts = mutableListOf<Alert>()
     private val flaggedMissingFee = mutableSetOf<Pair<AccountId, Day>>()
     private var nextEntryId = 1L
 
@@ -42,19 +46,20 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
     fun account(id: AccountId): Account = accounts[id] ?: error("Unknown account $id")
     fun entries(): List<LedgerEntry> = entries.toList()
     fun accruals(): List<InterestAccrual> = accruals.toList()
-    fun errors(): List<LedgerError> = errors.toList()
+    fun rejections(): List<Rejection> = rejections.toList()
+    fun alerts(): List<Alert> = alerts.toList()
 
     // ---------------------------------------------------------------- events
 
     fun apply(event: Event) {
         val account = accounts[event.accountId]
-            ?: return reject(event = event, kind = ErrorKind.UNKNOWN_ACCOUNT, message = "no such account")
+            ?: return reject(event = event, reason = RejectionReason.UNKNOWN_ACCOUNT, message = "no such account")
         val amount = event.amount
         if (amount != null && amount.currency != account.currency) {
-            return reject(event = event, kind = ErrorKind.CURRENCY_MISMATCH, message = "$amount on a ${account.currency} account")
+            return reject(event = event, reason = RejectionReason.CURRENCY_MISMATCH, message = "$amount on a ${account.currency} account")
         }
         if (amount != null && !amount.isPositive) {
-            return reject(event = event, kind = ErrorKind.INVALID_AMOUNT, message = "amount must be positive, got $amount")
+            return reject(event = event, reason = RejectionReason.INVALID_AMOUNT, message = "amount must be positive, got $amount")
         }
         when (event) {
             is Event.Credit -> post(event = event, type = EntryType.CREDIT, amount = event.amount)
@@ -74,21 +79,30 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
         }
     }
 
-    fun reject(event: Event, kind: ErrorKind, message: String) {
-        errors += LedgerError(
+    fun reject(event: Event, reason: RejectionReason, message: String) {
+        rejections += Rejection(
             accountId = event.accountId,
             day = event.bookingDay,
-            kind = kind,
+            reason = reason,
             event = event.id,
+            message = message,
+        )
+    }
+
+    private fun alert(accountId: AccountId, day: Day, kind: AlertKind, event: EventId?, message: String) {
+        alerts += Alert(
+            accountId = accountId,
+            day = day,
+            kind = kind,
+            event = event,
             message = message,
         )
     }
 
     private fun authorize(event: Event.Authorization) {
         if (holds.any { it.accountId == event.accountId && it.authId == event.authId }) {
-            return reject(event = event, kind = ErrorKind.DUPLICATE_AUTHORIZATION, message = "${event.authId} already exists")
+            return reject(event = event, reason = RejectionReason.DUPLICATE_AUTHORIZATION, message = "${event.authId} already exists")
         }
-        val availableAfter = availableBalance(event.accountId, event.bookingDay) - event.amount
         holds += Hold(
             authId = event.authId,
             accountId = event.accountId,
@@ -96,16 +110,9 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
             sourceEvent = event.id,
             placedOn = event.bookingDay,
         )
-        if (availableAfter.isNegative) {
-            transition(event = event, authId = event.authId, status = HoldStatus.DECLINED)
-            reject(
-                event = event,
-                kind = ErrorKind.AUTHORIZATION_DECLINED,
-                message = "${event.authId} for ${event.amount} would leave available balance at $availableAfter",
-            )
-        } else {
-            transition(event = event, authId = event.authId, status = HoldStatus.ACTIVE)
-        }
+        // A decline is an outcome, not an error: the DECLINED status is the record of it.
+        val declined = (availableBalance(event.accountId, event.bookingDay) - event.amount).isNegative
+        transition(event = event, authId = event.authId, status = if (declined) HoldStatus.DECLINED else HoldStatus.ACTIVE)
     }
 
     /** Settlements are facts, not requests: always debited. See AMBIGUITIES.md. */
@@ -115,9 +122,11 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
         if (status == HoldStatus.ACTIVE) {
             transition(event = event, authId = event.authId, status = HoldStatus.SETTLED)
         } else {
-            reject(
-                event = event,
-                kind = ErrorKind.SETTLEMENT_WITHOUT_AUTHORIZATION,
+            alert(
+                accountId = event.accountId,
+                day = event.bookingDay,
+                kind = AlertKind.SETTLEMENT_WITHOUT_AUTHORIZATION,
+                event = event.id,
                 message = "${event.authId} has no active hold (${status ?: "never authorized"}); ${event.amount} debited anyway",
             )
         }
@@ -130,13 +139,13 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
         if (targets.isEmpty()) {
             return reject(
                 event = event,
-                kind = ErrorKind.REVERSAL_TARGET_NOT_FOUND,
+                reason = RejectionReason.REVERSAL_TARGET_NOT_FOUND,
                 message = "no ledger entries came from ${event.reverses}",
             )
         }
         val targetIds = targets.map { it.id }.toSet()
         if (entries.any { it.type == EntryType.REVERSAL && it.compensates in targetIds }) {
-            return reject(event = event, kind = ErrorKind.ALREADY_REVERSED, message = "${event.reverses} was already reversed")
+            return reject(event = event, reason = RejectionReason.ALREADY_REVERSED, message = "${event.reverses} was already reversed")
         }
         targets.forEach {
             post(
@@ -173,10 +182,10 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
             if (balance.isNegative && !feeOutstanding) {
                 if (feeAmount == null) {
                     if (flaggedMissingFee.add(accountId to day)) {
-                        errors += LedgerError(
+                        alert(
                             accountId = accountId,
                             day = today,
-                            kind = ErrorKind.OVERDRAFT_FEE_UNDEFINED_FOR_CURRENCY,
+                            kind = AlertKind.OVERDRAFT_FEE_UNDEFINED_FOR_CURRENCY,
                             event = null,
                             message = "$day closing balance $balance is negative but no ${account.currency} overdraft fee is defined",
                         )
@@ -241,10 +250,10 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
         val total = sum(account, accruals.filter { it.accountId == accountId }.map { it.amount })
         // Holds by construction (total is the same records summed differently); kept as a tripwire.
         if (sum(account, perDay) != total) {
-            errors += LedgerError(
+            alert(
                 accountId = accountId,
                 day = today,
-                kind = ErrorKind.INTEREST_SUM_MISMATCH,
+                kind = AlertKind.INTEREST_SUM_MISMATCH,
                 event = null,
                 message = "daily accruals sum to ${sum(account, perDay)} but total is $total",
             )
@@ -304,8 +313,11 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
     fun accrualsBookedOn(accountId: AccountId, day: Day): List<InterestAccrual> =
         accruals.filter { it.accountId == accountId && it.bookedOn == day }
 
-    fun errorsOn(accountId: AccountId, day: Day): List<LedgerError> =
-        errors.filter { it.accountId == accountId && it.day == day }
+    fun rejectionsOn(accountId: AccountId, day: Day): List<Rejection> =
+        rejections.filter { it.accountId == accountId && it.day == day }
+
+    fun alertsOn(accountId: AccountId, day: Day): List<Alert> =
+        alerts.filter { it.accountId == accountId && it.day == day }
 
     // --------------------------------------------------------------- helpers
 
