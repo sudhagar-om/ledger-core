@@ -117,7 +117,7 @@ We have few options
 2. Don't apply the fee and trigger an alert.
 3. Throw an error and trigger an alert.
 
-Given the nature of the system, we should never at any point show some balance that could be wrong. Hence we will go with (3) instead of (2).
+Given the nature of the system, we should never at any point show some balance that could be wrong. Not charging a fee keeps the balance correct: it holds only what actually happened, with no invented fee in it. Throwing an error would stop processing for the account, and every later event for it, including perfectly valid ones, would be stuck behind a question only the business can answer. Hence we will go with (2) instead of (3): no fee is charged, and an `OVERDRAFT_FEE_UNDEFINED_FOR_CURRENCY` alert is raised once per negative value day so someone decides what the fee should be.
 
 About (1), we will discard it because exchange rates keep changing. Then we have to deal with dynamic fee which add complexity for the system and also not a great product experience for the user.
 

@@ -10,7 +10,7 @@ data class Policy(
     val interestCapitalizationIntervalDays: Int,
     /** 0.04% per day as a fraction. */
     val dailyInterestRate: BigDecimal,
-    /** Currencies without an entry have no defined fee; going negative raises an error instead. */
+    /** Currencies without an entry have no defined fee; a negative day charges nothing and raises an alert instead. */
     val overdraftFees: Map<Currency, Money>,
     /** An unsettled hold placed on Day N is released at the close of Day N + this - 1. */
     val holdExpiryDays: Int,
