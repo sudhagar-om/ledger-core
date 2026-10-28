@@ -1,6 +1,6 @@
 # Ledger Core
 
-An in-memory account ledger written in Kotlin. It replays the six-day event stream for ACC-001 (AED) and ACC-002 (BHD). For each account and day it prints the closing ledger balance, available balance, hold states, entries posted, fees, rejections and alerts.
+An in-memory account ledger written in Kotlin. It replays the six-day event stream for ACC-001 (AED) and ACC-002 (BHD). For each account and day it prints the closing ledger balance, fee assessments, authorization states and errors. The interactive stepper shows the detail behind them.
 
 There is no web layer, persistence or UI. Everything lives in memory and is driven by `Main.kt`, the interactive stepper and the JUnit suite.
 
@@ -33,43 +33,29 @@ Run the test suite:
 
 ### Per-day blocks
 
-Each block is one account on one **booking day**:
+Each block is one account on one **booking day**, and holds only the four things the spec asks for:
 
 ```
-=== ACC-001 | Day 4 ===  closing AED 285.00 · available AED 285.00 · holds: Auth-A SETTLED
-┌──────┬────┬────────────┬─────────┬───────────┬────────────────┐
-│ From │ #  │ Type       │  Amount │ Value day │ Note           │
-├──────┼────┼────────────┼─────────┼───────────┼────────────────┤
-│ E5   │ #4 │ SETTLEMENT │ -185.00 │ Day 4     │ settles Auth-A │
-│ E6   │ #5 │ SETTLEMENT │ -180.00 │ Day 4     │ settles Auth-Z │
-└──────┴────┴────────────┴─────────┴───────────┴────────────────┘
-Alerts
-...
+=== ACC-001 | Day 5 ===
+  Closing ledger balance  AED -410.00
+  Fee assessments         OVERDRAFT_FEE AED -25.00 for Day 2 (Day 2 closing AED -370.00)
+                          OVERDRAFT_FEE AED -25.00 for Day 4 (Day 4 closing AED -360.00)
+                          OVERDRAFT_FEE AED -25.00 for Day 5 (Day 5 closing AED -385.00)
+  Authorizations          Auth-A SETTLED
+                          Auth-B DECLINED
+  Errors                  none
 ```
 
-- **Header line**
-  - `closing`: that day's closing ledger balance, i.e. the sum of all entries with value day ≤ that day. It is computed when the day closes, so it includes fees.
-  - `available`: ledger balance minus active holds.
-  - `holds`: every authorization seen on the account and its current state (`ACTIVE`, `SETTLED`, `EXPIRED`, `DECLINED`).
-- **Table**: everything *booked* that day, in the order it happened. Event postings come first, then the close (fees, then interest capitalization).
-  - `From` is the event id, or `end of day` for entries the ledger posts itself (fees, fee refunds, interest).
-  - `#` is the global entry id. It increases in the order entries were appended.
-  - `Value day` is the day the entry counts towards. When it differs from the block's day, the entry is back-dated. For example, E7 is booked on Day 5 with value day Day 2, so it appears in the Day 5 block. The three overdraft fees it causes are all booked on Day 5, with value days 2, 4 and 5.
-  - `Note` explains system entries. Fees show the closing balance that triggered them. Refunds and reversals name the entry they compensate.
-  - `no activity` means nothing was booked that day.
-- **Rejected events / Alerts**: shown under the day they were raised. A rejection means the event posted nothing. An alert means the event was applied but needs a person to look at it (e.g. E6 settling Auth-Z, which was never authorized).
+- **Closing ledger balance**: the sum of all entries with value day ≤ that day, taken when the day closes. It includes that close's fees and, on Day 6, interest capitalization. It is printed once and never revised. A later back-dated event changes the balance used for fees and interest, not this printed figure (see [AMBIGUITIES.md](AMBIGUITIES.md), *Closing Ledger Balance*).
+- **Fee assessments**: overdraft fees and fee refunds booked at this day's close. `for Day N` is the value day the fee was assessed for. The note in brackets is the closing balance that triggered it. E7 is booked on Day 5 with value day Day 2, so its three fees (Days 2, 4 and 5) appear in the Day 5 block, and E9's three refunds appear in Day 6.
+- **Authorizations**: every authorization on the account and its state at the close (`ACTIVE`, `SETTLED`, `EXPIRED`, `DECLINED`).
+- **Errors**: events raised on that day that need attention. `rejected` means the event posted nothing. `alert` means the event was applied but needs a person to look at it, e.g. E6 settling Auth-Z, which was never authorized.
+
+Available balance, the individual postings, daily interest accruals and the full ledger are not part of the required output. Use the stepper to see them.
 
 ### Why the blocks are not in strict day order
 
 Days close **per account**, triggered by the next event for that account. An event booked on Day N closes that account's days before N. The window end (Day 6) closes whatever is left. So ACC-001's Day 5 is closed by E9 (booked Day 6), and ACC-002's Days 1–4 are only closed when E10 arrives. That is why ACC-002's early days print after ACC-001's Day 5, and ACC-001 Day 6 prints before ACC-002 Day 5. The reasoning is in [AMBIGUITIES.md](AMBIGUITIES.md) under *The Events* and *The output*.
-
-### Summary tables
-
-After the replay, three tables cover the whole run:
-
-- **Final ledger**: every entry ever appended, with booking day and value day side by side. Nothing in it is ever edited or removed. Corrections are new rows with `compensates #n`.
-- **All rejected events**: empty for the given stream.
-- **All alerts**: the Auth-Z settlement.
 
 ## The interactive stepper
 

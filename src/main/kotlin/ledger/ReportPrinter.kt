@@ -12,31 +12,30 @@ object ReportPrinter {
     private const val END_OF_DAY = "end of day"
 
     /**
-     * One day of one account: balances and holds in the header, then everything booked that
-     * day in one table, in the order it happened: event postings, then the close (fees,
-     * capitalization).
+     * One day of one account, limited to what the spec asks for: the closing ledger balance,
+     * fees booked that day (each with the value day it was assessed for), authorization states
+     * and errors. Errors are rejections (the event posted nothing) and alerts (the event was
+     * applied but needs a person to look at it). The stepper shows everything else.
      */
     fun format(r: DailyReport): String = buildString {
-        val holds = r.holds.entries.joinToString { "${it.key} ${it.value}" }.ifEmpty { "none" }
-        appendLine("=== ${r.accountId} | ${r.day} ===  closing ${r.closingLedgerBalance} · available ${r.availableBalance} · holds: $holds")
+        appendLine("=== ${r.accountId} | ${r.day} ===")
+        appendLine("  Closing ledger balance  ${r.closingLedgerBalance}")
+        section("Fee assessments", r.feesAssessed.map {
+            "${it.type} ${it.amount.currency} ${signed(it.amount)} for ${it.valueDay} (${it.memo})"
+        })
+        section("Authorizations", r.holds.map { "${it.key} ${it.value}" })
+        section("Errors", r.rejections.map { "${it.event} rejected ${it.reason}: ${it.message}" } +
+            r.alerts.map { "${it.event?.value ?: END_OF_DAY} alert ${it.kind}: ${it.message}" })
+    }
 
-        val rows = r.postings.map { listOf(it.sourceEvent.toString()) + entryRow(it) } +
-            r.feesAssessed.map { listOf(END_OF_DAY) + entryRow(it) } +
-            listOfNotNull(r.interestCapitalized).map { listOf(END_OF_DAY) + entryRow(it) }
-        if (rows.isEmpty()) {
-            appendLine("no activity")
-        } else {
-            append(Table.render(headers = listOf("From") + ENTRY_HEADERS, rows = rows, rightAligned = setOf(3)))
-        }
-        if (r.rejections.isNotEmpty()) {
-            appendLine("Rejected events")
-            append(rejectionTable(r.rejections))
-        }
-        if (r.alerts.isNotEmpty()) {
-            appendLine("Alerts")
-            append(alertTable(r.alerts))
+    /** [label] then one line per item, continuation lines aligned under the first; "none" when empty. */
+    private fun StringBuilder.section(label: String, lines: List<String>) {
+        lines.ifEmpty { listOf("none") }.forEachIndexed { i, line ->
+            appendLine("  ${(if (i == 0) label else "").padEnd(LABEL_WIDTH)}$line")
         }
     }
+
+    private const val LABEL_WIDTH = "Closing ledger balance  ".length
 
     /** The whole ledger, one row per entry. */
     fun ledgerTable(entries: List<LedgerEntry>): String = Table.render(

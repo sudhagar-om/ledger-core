@@ -3,7 +3,6 @@ package ledger
 import ledger.model.AccountId
 import ledger.model.DailyReport
 import ledger.model.Day
-import ledger.model.data.EntryType
 
 /**
  * End-of-day processing: told that a business day has ended for an account, it closes every
@@ -38,15 +37,12 @@ class EndOfDayProcessor(private val ledger: LedgerCore, private val onReport: (D
     }
 
     private fun report(accountId: AccountId, day: Day): DailyReport {
-        val booked = repo.entries(accountId).filter { it.bookingDay == day }
         return DailyReport(
             accountId = accountId,
             day = day,
             closingLedgerBalance = ledger.liveBalance(accountId, day),
             availableBalance = ledger.liveAvailableBalance(accountId, day),
-            postings = booked.filter { it.sourceEvent != null },
-            feesAssessed = booked.filter { it.type in LedgerCore.FEE_TYPES },
-            interestCapitalized = booked.firstOrNull { it.type == EntryType.INTEREST_CAPITALIZATION },
+            feesAssessed = repo.entries(accountId).filter { it.bookingDay == day && it.type in LedgerCore.FEE_TYPES },
             holds = ledger.holdStatuses(accountId),
             rejections = repo.rejections(accountId).filter { it.day == day },
             alerts = repo.alerts(accountId).filter { it.day == day },
