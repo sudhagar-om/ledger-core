@@ -109,3 +109,13 @@ Some correction I am doing to it
 4. Added a stepper helper to step through the events for better understanding
 
 I will commit these for now.
+
+## 9:45 AM
+
+Now looking at ErrorKind object, I see it has combined errors and alerts into a single enum. We will split it into separate rejection and alert.
+
+## 10: 07 AM
+
+Looking at the models, we said we will derive everything on demand from Ledger. But InterestAccrual for each day is a separate model in our system. For now I will remove it. We will come to the decision of what all supporting models we will need later.
+
+Another thing I notice is there is no clear separation between data layer and application layer. I am fixing it.
