@@ -1,4 +1,8 @@
-package ledger.model
+package ledger.model.data
+
+import ledger.model.AccountId
+import ledger.model.Day
+import ledger.model.EventId
 
 /** Why an event was refused. Nothing was posted and no hold changed; the sender must correct it and resend. */
 enum class RejectionReason {

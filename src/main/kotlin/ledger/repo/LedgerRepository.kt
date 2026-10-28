@@ -1,0 +1,43 @@
+package ledger.repo
+
+import ledger.model.AccountId
+import ledger.model.Day
+import ledger.model.data.Account
+import ledger.model.data.Alert
+import ledger.model.data.EntryId
+import ledger.model.data.Hold
+import ledger.model.data.HoldTransition
+import ledger.model.data.LedgerEntry
+import ledger.model.data.Rejection
+
+/**
+ * The data layer: stores the ledger's records and looks them up by account. It holds no
+ * business rules; [ledger.Ledger] does all the reasoning over these records. Records are
+ * append-only: nothing is ever updated or removed.
+ */
+interface LedgerRepository {
+    fun accountIds(): List<AccountId>
+    fun hasAccount(id: AccountId): Boolean
+    fun account(id: AccountId): Account
+
+    fun nextEntryId(): EntryId
+
+    fun add(entry: LedgerEntry)
+    fun add(hold: Hold)
+    fun add(transition: HoldTransition)
+    fun add(rejection: Rejection)
+    fun add(alert: Alert)
+
+    fun entries(): List<LedgerEntry>
+    fun entries(accountId: AccountId): List<LedgerEntry>
+    fun holds(accountId: AccountId): List<Hold>
+    fun holdTransitions(accountId: AccountId): List<HoldTransition>
+    fun rejections(): List<Rejection>
+    fun rejections(accountId: AccountId): List<Rejection>
+    fun alerts(): List<Alert>
+    fun alerts(accountId: AccountId): List<Alert>
+
+    /** The last business day closed for the account; null if none yet. Only ever moves forward. */
+    fun closedThrough(accountId: AccountId): Day?
+    fun markClosed(accountId: AccountId, day: Day)
+}

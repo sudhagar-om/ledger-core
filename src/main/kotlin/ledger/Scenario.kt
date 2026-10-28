@@ -1,6 +1,5 @@
 package ledger
 
-import ledger.model.Account
 import ledger.model.AccountId
 import ledger.model.AuthId
 import ledger.model.Currency.AED
@@ -9,6 +8,7 @@ import ledger.model.Day
 import ledger.model.Event
 import ledger.model.EventId
 import ledger.model.Money
+import ledger.model.data.Account
 
 /** The event stream from the problem statement, in replay order. */
 object Scenario {

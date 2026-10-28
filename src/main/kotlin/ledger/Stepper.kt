@@ -3,9 +3,10 @@ package ledger
 import ledger.model.AccountId
 import ledger.model.DailyReport
 import ledger.model.Day
-import ledger.model.EntryType
 import ledger.model.Event
 import ledger.model.Money
+import ledger.model.data.EntryType
+import ledger.repo.InMemoryLedgerRepository
 
 /**
  * Interactive walkthrough: one event per Enter. Each step shows the days the event closed
@@ -14,7 +15,8 @@ import ledger.model.Money
  * Type q + Enter to quit.
  */
 class Stepper(private val events: List<Event> = Scenario.events) {
-    private val ledger = Ledger(Scenario.accounts)
+    private val ledger = Ledger(InMemoryLedgerRepository(Scenario.accounts))
+    private val repo = ledger.repo
     private val closedDays = mutableListOf<DailyReport>()
     private val processor = EventProcessor(ledger) { closedDays += it }
     private val stream = EventStream(processor)
@@ -26,7 +28,7 @@ class Stepper(private val events: List<Event> = Scenario.events) {
             step(accounts = listOf(event.accountId), asOf = event.bookingDay, event = event) { stream.feed(event) }
         }
         if (!prompt("[end] No more events. Close all accounts through ${Scenario.reportThrough}")) return
-        step(accounts = ledger.accountIds(), asOf = Scenario.reportThrough, event = null) {
+        step(accounts = repo.accountIds(), asOf = Scenario.reportThrough, event = null) {
             processor.endOfDay(Scenario.reportThrough)
         }
         println("Done.")
@@ -39,37 +41,35 @@ class Stepper(private val events: List<Event> = Scenario.events) {
     }
 
     private fun step(accounts: List<AccountId>, asOf: Day, event: Event?, action: () -> Unit) {
-        val entriesBefore = ledger.entries().size
-        val rejectionsBefore = ledger.rejections().size
-        val alertsBefore = ledger.alerts().size
+        val entriesBefore = repo.entries().size
+        val rejectionsBefore = repo.rejections().size
+        val alertsBefore = repo.alerts().size
         val closingBefore = accounts.associateWith { id -> days(asOf).associateWith { ledger.closingBalance(id, it) } }
         closedDays.clear()
 
         action()
 
-        val newEntries = ledger.entries().drop(entriesBefore)
-        val newRejections = ledger.rejections().drop(rejectionsBefore)
-        val newAlerts = ledger.alerts().drop(alertsBefore)
+        val newEntries = repo.entries().drop(entriesBefore)
+        val newRejections = repo.rejections().drop(rejectionsBefore)
+        val newAlerts = repo.alerts().drop(alertsBefore)
         println()
 
         closedDays.groupBy { it.accountId }.forEach { (accountId, reports) ->
             val closed = reports.map { it.day }
             val range = if (closed.size == 1) "${closed.single()}" else "${closed.first()} to ${closed.last()}"
             val why = event?.let { " (${it.id} is booked on ${it.bookingDay})" } ?: ""
-            // In the order the close runs: fees, then interest accruals, then capitalization.
+            // In the order the close runs: fees, then capitalization.
             val rows = reports.flatMap { report ->
                 val (capitalized, fees) = newEntries
                     .filter { it.sourceEvent == null && it.accountId == accountId && it.bookingDay == report.day }
                     .partition { it.type == EntryType.INTEREST_CAPITALIZATION }
                 val closed = listOf(report.day.toString())
                 fees.map { closed + ReportPrinter.entryRow(it) } +
-                    report.interestAccruals.map { closed + ReportPrinter.accrualRow(it) } +
                     capitalized.map { closed + ReportPrinter.entryRow(it) }
             }
-            if (rows.isEmpty()) return@forEach println("  End of $range for $accountId$why: nothing posted or accrued\n")
+            if (rows.isEmpty()) return@forEach println("  End of $range for $accountId$why: nothing posted\n")
             println("  End of $range for $accountId$why")
             print(indent(Table.render(headers = listOf("Closed") + ReportPrinter.ENTRY_HEADERS, rows = rows, rightAligned = setOf(3))))
-            if (reports.any { it.interestAccruals.isNotEmpty() }) println("  ${ReportPrinter.ACCRUAL_FOOTNOTE}")
             println()
         }
 
@@ -102,15 +102,15 @@ class Stepper(private val events: List<Event> = Scenario.events) {
     /** One column per value day: how the closing balance stands now and how much this step moved it. */
     private fun timeline(accountId: AccountId, asOf: Day, closingBefore: Map<Day, Money>) {
         val days = days(asOf)
-        val currency = ledger.account(accountId).currency
+        val currency = repo.account(accountId).currency
         val closedThrough = processor.closedThrough(accountId)
         val holds = ledger.holdStatuses(accountId).entries.joinToString { "${it.key} ${it.value}" }.ifEmpty { "none" }
 
         fun blankIfZero(m: Money) = if (m.minorUnits == 0L) "" else ReportPrinter.signed(m)
-        fun fees(day: Day) = ledger.entries()
+        fun fees(day: Day) = repo.entries()
             .filter { it.accountId == accountId && it.valueDay == day && it.type in Ledger.FEE_TYPES }
             .fold(Money.zero(currency)) { acc, e -> acc + e.amount }
-        fun capitalized(day: Day) = ledger.entries()
+        fun capitalized(day: Day) = repo.entries()
             .filter { it.accountId == accountId && it.valueDay == day && it.type == EntryType.INTEREST_CAPITALIZATION }
             .fold(Money.zero(currency)) { acc, e -> acc + e.amount }
 
@@ -122,7 +122,7 @@ class Stepper(private val events: List<Event> = Scenario.events) {
                 listOf("Closing") + days.map { ledger.closingBalance(accountId, it).toPlainString() },
                 listOf("This step") + days.map { blankIfZero(ledger.closingBalance(accountId, it) - closingBefore.getValue(it)) },
                 listOf("Fees") + days.map { blankIfZero(fees(it)) },
-                listOf("Interest") + days.map { blankIfZero(ledger.accruedInterest(accountId, it)) },
+                listOf("Interest") + days.map { blankIfZero(ledger.interest(accountId, it)) },
                 listOf("Capitalized") + days.map { blankIfZero(capitalized(it)) },
                 listOf("Status") + days.map { if (closedThrough != null && it <= closedThrough) "closed" else "open" },
             ).filter { row -> row.drop(1).any { it.isNotEmpty() } },

@@ -1,12 +1,11 @@
 package ledger
 
-import ledger.model.Alert
 import ledger.model.DailyReport
 import ledger.model.Event
-import ledger.model.InterestAccrual
-import ledger.model.LedgerEntry
 import ledger.model.Money
-import ledger.model.Rejection
+import ledger.model.data.Alert
+import ledger.model.data.LedgerEntry
+import ledger.model.data.Rejection
 
 object ReportPrinter {
     /** Marks rows produced by end-of-day processing rather than by an input event. */
@@ -15,7 +14,7 @@ object ReportPrinter {
     /**
      * One day of one account: balances and holds in the header, then everything booked that
      * day in one table, in the order it happened: event postings, then the close (fees,
-     * interest accruals, capitalization).
+     * capitalization).
      */
     fun format(r: DailyReport): String = buildString {
         val holds = r.holds.entries.joinToString { "${it.key} ${it.value}" }.ifEmpty { "none" }
@@ -23,7 +22,6 @@ object ReportPrinter {
 
         val rows = r.postings.map { listOf(it.sourceEvent.toString()) + entryRow(it) } +
             r.feesAssessed.map { listOf(END_OF_DAY) + entryRow(it) } +
-            r.interestAccruals.map { listOf(END_OF_DAY) + accrualRow(it) } +
             listOfNotNull(r.interestCapitalized).map { listOf(END_OF_DAY) + entryRow(it) }
         if (rows.isEmpty()) {
             appendLine("no activity")
@@ -70,16 +68,9 @@ object ReportPrinter {
 
     val ENTRY_HEADERS = listOf("#", "Type", "Amount", "Value day", "Note")
 
-    const val ACCRUAL_FOOTNOTE =
-        "Rows without # are interest accruals: tracked per value day, posted to the ledger only when capitalized."
-
     /** Row under [ENTRY_HEADERS]. */
     fun entryRow(e: LedgerEntry): List<String> =
         listOf(e.id.toString(), e.type.name, signed(e.amount), e.valueDay.toString(), note(e))
-
-    /** Row under [ENTRY_HEADERS]; an accrual has no entry id. */
-    fun accrualRow(a: InterestAccrual): List<String> =
-        listOf("-", "INTEREST_ACCRUAL", signed(a.amount), a.valueDay.toString(), "${a.valueDay} closing ${a.closingBalance}")
 
     fun describe(e: Event): String {
         val what = when (e) {

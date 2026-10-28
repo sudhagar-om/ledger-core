@@ -1,4 +1,10 @@
-package ledger.model
+package ledger.model.data
+
+import ledger.model.AccountId
+import ledger.model.AuthId
+import ledger.model.Day
+import ledger.model.EventId
+import ledger.model.Money
 
 enum class HoldStatus {
     /** Approved and still reducing available balance. */

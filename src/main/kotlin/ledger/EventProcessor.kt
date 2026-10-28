@@ -3,9 +3,9 @@ package ledger
 import ledger.model.AccountId
 import ledger.model.DailyReport
 import ledger.model.Day
-import ledger.model.EntryType
-import ledger.model.RejectionReason
 import ledger.model.Event
+import ledger.model.data.EntryType
+import ledger.model.data.RejectionReason
 
 /**
  * The ledger's entry point. It takes two kinds of input, both decided by the caller:
@@ -18,17 +18,17 @@ import ledger.model.Event
  * An event booked on a day the account has already closed is rejected.
  */
 class EventProcessor(val ledger: Ledger, private val onReport: (DailyReport) -> Unit = {}) {
-    private val lastClosed = mutableMapOf<AccountId, Day>()
+    private val repo = ledger.repo
     private val reports = mutableListOf<DailyReport>()
 
     fun reports(): List<DailyReport> = reports.toList()
-    fun closedThrough(accountId: AccountId): Day? = lastClosed[accountId]
+    fun closedThrough(accountId: AccountId): Day? = repo.closedThrough(accountId)
 
     fun process(event: Event) {
         val accountId = event.accountId
-        if (!ledger.hasAccount(accountId)) return ledger.apply(event)
+        if (!repo.hasAccount(accountId)) return ledger.apply(event)
 
-        val closed = lastClosed[accountId]
+        val closed = repo.closedThrough(accountId)
         if ((closed != null && event.bookingDay <= closed) || event.bookingDay < ledger.firstDay) {
             return ledger.reject(
                 event = event,
@@ -41,24 +41,24 @@ class EventProcessor(val ledger: Ledger, private val onReport: (DailyReport) -> 
 
     /** End of [day] for every account. */
     fun endOfDay(day: Day) {
-        ledger.accountIds().forEach { endOfDay(it, day) }
+        repo.accountIds().forEach { endOfDay(it, day) }
     }
 
     /** Closes every still-open day through [day], so a missed close is caught up. Closed days are skipped. */
     fun endOfDay(accountId: AccountId, day: Day) {
-        var next = Day((lastClosed[accountId]?.number ?: (ledger.firstDay.number - 1)) + 1)
+        var next = Day((repo.closedThrough(accountId)?.number ?: (ledger.firstDay.number - 1)) + 1)
         while (next <= day) {
             ledger.closeDay(accountId, next)
             val report = report(accountId, next)
             reports += report
             onReport(report)
-            lastClosed[accountId] = next
+            repo.markClosed(accountId, next)
             next = Day(next.number + 1)
         }
     }
 
     private fun report(accountId: AccountId, day: Day): DailyReport {
-        val booked = ledger.entriesBookedOn(accountId, day)
+        val booked = repo.entries(accountId).filter { it.bookingDay == day }
         return DailyReport(
             accountId = accountId,
             day = day,
@@ -66,11 +66,10 @@ class EventProcessor(val ledger: Ledger, private val onReport: (DailyReport) -> 
             availableBalance = ledger.availableBalance(accountId, day),
             postings = booked.filter { it.sourceEvent != null },
             feesAssessed = booked.filter { it.type in Ledger.FEE_TYPES },
-            interestAccruals = ledger.accrualsBookedOn(accountId, day),
             interestCapitalized = booked.firstOrNull { it.type == EntryType.INTEREST_CAPITALIZATION },
             holds = ledger.holdStatuses(accountId),
-            rejections = ledger.rejectionsOn(accountId, day),
-            alerts = ledger.alertsOn(accountId, day),
+            rejections = repo.rejections(accountId).filter { it.day == day },
+            alerts = repo.alerts(accountId).filter { it.day == day },
         )
     }
 }

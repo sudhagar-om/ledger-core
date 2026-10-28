@@ -1,19 +1,9 @@
 package ledger.model
 
-@JvmInline
-value class EventId(val value: String) {
-    override fun toString(): String = value
-}
-
-@JvmInline
-value class AuthId(val value: String) {
-    override fun toString(): String = value
-}
-
 /**
  * Input to the ledger: what arrived on the stream. Events are immutable and are
- * never stored as balances themselves — the ledger turns them into [LedgerEntry]s,
- * [Hold]s, [Rejection]s and [Alert]s.
+ * never stored as balances themselves — the ledger turns them into the records in
+ * [ledger.model.data]: entries, holds, rejections and alerts.
  *
  * bookingDay is assigned by the upstream system when it received the event and is
  * authoritative for processing order. valueDay is when the money is economically effective.

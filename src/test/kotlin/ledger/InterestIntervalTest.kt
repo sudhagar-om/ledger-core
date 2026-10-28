@@ -1,14 +1,15 @@
 package ledger
 
 import ledger.Scenario.ACC_001
-import ledger.model.Account
 import ledger.model.Currency.AED
 import ledger.model.Day
-import ledger.model.EntryType
-import ledger.model.RejectionReason
 import ledger.model.Event
 import ledger.model.EventId
 import ledger.model.Money
+import ledger.model.data.Account
+import ledger.model.data.EntryType
+import ledger.model.data.RejectionReason
+import ledger.repo.InMemoryLedgerRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -17,11 +18,11 @@ import kotlin.test.assertTrue
 class InterestIntervalTest {
     private fun aed(value: String) = Money.of(value, AED)
     private fun ledger(interval: Int = 6, firstDay: Int = 1) = Ledger(
-        listOf(Account(ACC_001, AED, aed("1000.00"))),
-        Policy.DEFAULT.copy(interestCapitalizationIntervalDays = interval),
+        repo = InMemoryLedgerRepository(listOf(Account(id = ACC_001, currency = AED, openingBalance = aed("1000.00")))),
+        policy = Policy.DEFAULT.copy(interestCapitalizationIntervalDays = interval),
         firstDay = Day(firstDay),
     )
-    private fun Ledger.capitalizations() = entries().filter { it.type == EntryType.INTEREST_CAPITALIZATION }
+    private fun Ledger.capitalizations() = repo.entries().filter { it.type == EntryType.INTEREST_CAPITALIZATION }
 
     @Test
     fun `reporting mid cycle does not capitalize and later cycles compound`() {
@@ -43,11 +44,11 @@ class InterestIntervalTest {
         val processor = EventProcessor(ledger)
         processor.endOfDay(Day(50))
         assertEquals((10..50).toList(), ledger.capitalizations().map { it.bookingDay.number })
-        assertEquals(aed("0.40"), ledger.accruedInterest(ACC_001, Day(10)))
-        // After enough daily postings the rounded daily accrual increases.
-        assertEquals(aed("0.41"), ledger.accruedInterest(ACC_001, Day(50)))
-        assertTrue(ledger.rejections().isEmpty())
-        assertTrue(ledger.alerts().isEmpty())
+        assertEquals(aed("0.40"), ledger.interest(ACC_001, Day(10)))
+        // After enough daily postings the rounded daily interest increases.
+        assertEquals(aed("0.41"), ledger.interest(ACC_001, Day(50)))
+        assertTrue(ledger.repo.rejections().isEmpty())
+        assertTrue(ledger.repo.alerts().isEmpty())
     }
 
     @Test
@@ -70,9 +71,9 @@ class InterestIntervalTest {
         processor.endOfDay(Day(12))
         assertEquals(listOf(aed("2.40"), aed("7.20")), ledger.capitalizations().map { it.amount })
         assertEquals(firstPosting, ledger.capitalizations().first())
-        assertEquals(aed("0.80"), ledger.accruedInterest(ACC_001, Day(6)))
-        assertTrue(ledger.rejections().isEmpty())
-        assertTrue(ledger.alerts().isEmpty())
+        assertEquals(aed("0.80"), ledger.interest(ACC_001, Day(6)))
+        assertTrue(ledger.repo.rejections().isEmpty())
+        assertTrue(ledger.repo.alerts().isEmpty())
     }
 
     @Test
@@ -82,8 +83,8 @@ class InterestIntervalTest {
         processor.endOfDay(Day(7))
         processor.process(Event.Credit(EventId("closed"), ACC_001, Day(7), Day(7), aed("10.00")))
         processor.process(Event.Credit(EventId("next"), ACC_001, Day(8), Day(8), aed("10.00")))
-        assertEquals(RejectionReason.BOOKING_DAY_CLOSED, ledger.rejections().single().reason)
-        assertEquals(listOf(EventId("next")), ledger.entries().mapNotNull { it.sourceEvent })
+        assertEquals(RejectionReason.BOOKING_DAY_CLOSED, ledger.repo.rejections().single().reason)
+        assertEquals(listOf(EventId("next")), ledger.repo.entries().mapNotNull { it.sourceEvent })
     }
 
     @Test

@@ -22,7 +22,7 @@ class EventStream(private val processor: EventProcessor) {
     }
 
     fun feed(event: Event) {
-        if (ledger.hasAccount(event.accountId)) {
+        if (ledger.repo.hasAccount(event.accountId)) {
             processor.endOfDay(event.accountId, Day(event.bookingDay.number - 1))
         }
         processor.process(event)

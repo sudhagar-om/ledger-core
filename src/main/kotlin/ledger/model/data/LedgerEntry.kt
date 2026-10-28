@@ -1,4 +1,9 @@
-package ledger.model
+package ledger.model.data
+
+import ledger.model.AccountId
+import ledger.model.Day
+import ledger.model.EventId
+import ledger.model.Money
 
 @JvmInline
 value class EntryId(val value: Long) {

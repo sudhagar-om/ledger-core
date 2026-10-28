@@ -1,59 +1,43 @@
 package ledger
 
-import ledger.model.Account
 import ledger.model.AccountId
-import ledger.model.Alert
-import ledger.model.AlertKind
 import ledger.model.AuthId
 import ledger.model.Day
-import ledger.model.EntryId
-import ledger.model.EntryType
 import ledger.model.Event
-import ledger.model.EventId
-import ledger.model.Hold
-import ledger.model.HoldStatus
-import ledger.model.HoldTransition
-import ledger.model.InterestAccrual
-import ledger.model.LedgerEntry
 import ledger.model.Money
-import ledger.model.Rejection
-import ledger.model.RejectionReason
+import ledger.model.data.Account
+import ledger.model.data.Alert
+import ledger.model.data.AlertKind
+import ledger.model.data.EntryId
+import ledger.model.data.EntryType
+import ledger.model.data.Hold
+import ledger.model.data.HoldStatus
+import ledger.model.data.HoldTransition
+import ledger.model.data.LedgerEntry
+import ledger.model.data.Rejection
+import ledger.model.data.RejectionReason
+import ledger.repo.LedgerRepository
 
 /**
- * The in-memory ledger. Every collection here is append-only: nothing is ever
- * removed or replaced. Balances are always derived by summing entries.
+ * The ledger's business logic. It keeps no state of its own: every record lives in
+ * [repo], and balances and interest are always derived from those records on demand.
  *
  * Two kinds of work happen here:
  *  - [apply] turns an input event into entries and holds, or a [Rejection]; an event
  *    that is applied but needs review also raises an [Alert].
- *  - [closeDay] runs end-of-day processing: overdraft fees and interest are
- *    re-assessed for every value day up to today, so back-dated entries are
- *    picked up (see AMBIGUITIES.md, Retrospective Overdraft Fees).
+ *  - [closeDay] runs end-of-day processing: overdraft fees are re-assessed for every
+ *    value day up to today, so back-dated entries are picked up (see AMBIGUITIES.md,
+ *    Retrospective Overdraft Fees), and interest is capitalized on interval days.
  */
-class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val firstDay: Day = Day(1)) {
-    private val accounts: Map<AccountId, Account> = accounts.associateBy { it.id }
-    private val entries = mutableListOf<LedgerEntry>()
-    private val holds = mutableListOf<Hold>()
-    private val holdTransitions = mutableListOf<HoldTransition>()
-    private val accruals = mutableListOf<InterestAccrual>()
-    private val rejections = mutableListOf<Rejection>()
-    private val alerts = mutableListOf<Alert>()
-    private val flaggedMissingFee = mutableSetOf<Pair<AccountId, Day>>()
-    private var nextEntryId = 1L
-
-    fun accountIds(): List<AccountId> = accounts.keys.toList()
-    fun hasAccount(id: AccountId): Boolean = id in accounts
-    fun account(id: AccountId): Account = accounts[id] ?: error("Unknown account $id")
-    fun entries(): List<LedgerEntry> = entries.toList()
-    fun accruals(): List<InterestAccrual> = accruals.toList()
-    fun rejections(): List<Rejection> = rejections.toList()
-    fun alerts(): List<Alert> = alerts.toList()
+class Ledger(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT, val firstDay: Day = Day(1)) {
 
     // ---------------------------------------------------------------- events
 
     fun apply(event: Event) {
-        val account = accounts[event.accountId]
-            ?: return reject(event = event, reason = RejectionReason.UNKNOWN_ACCOUNT, message = "no such account")
+        if (!repo.hasAccount(event.accountId)) {
+            return reject(event = event, reason = RejectionReason.UNKNOWN_ACCOUNT, message = "no such account")
+        }
+        val account = repo.account(event.accountId)
         val amount = event.amount
         if (amount != null && amount.currency != account.currency) {
             return reject(event = event, reason = RejectionReason.CURRENCY_MISMATCH, message = "$amount on a ${account.currency} account")
@@ -80,38 +64,32 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
     }
 
     fun reject(event: Event, reason: RejectionReason, message: String) {
-        rejections += Rejection(
-            accountId = event.accountId,
-            day = event.bookingDay,
-            reason = reason,
-            event = event.id,
-            message = message,
-        )
-    }
-
-    private fun alert(accountId: AccountId, day: Day, kind: AlertKind, event: EventId?, message: String) {
-        alerts += Alert(
-            accountId = accountId,
-            day = day,
-            kind = kind,
-            event = event,
-            message = message,
+        repo.add(
+            Rejection(
+                accountId = event.accountId,
+                day = event.bookingDay,
+                reason = reason,
+                event = event.id,
+                message = message,
+            )
         )
     }
 
     private fun authorize(event: Event.Authorization) {
-        if (holds.any { it.accountId == event.accountId && it.authId == event.authId }) {
+        if (repo.holds(event.accountId).any { it.authId == event.authId }) {
             return reject(event = event, reason = RejectionReason.DUPLICATE_AUTHORIZATION, message = "${event.authId} already exists")
         }
-        holds += Hold(
-            authId = event.authId,
-            accountId = event.accountId,
-            amount = event.amount,
-            sourceEvent = event.id,
-            placedOn = event.bookingDay,
-        )
         // A decline is an outcome, not an error: the DECLINED status is the record of it.
         val declined = (availableBalance(event.accountId, event.bookingDay) - event.amount).isNegative
+        repo.add(
+            Hold(
+                authId = event.authId,
+                accountId = event.accountId,
+                amount = event.amount,
+                sourceEvent = event.id,
+                placedOn = event.bookingDay,
+            )
+        )
         transition(event = event, authId = event.authId, status = if (declined) HoldStatus.DECLINED else HoldStatus.ACTIVE)
     }
 
@@ -122,20 +100,22 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
         if (status == HoldStatus.ACTIVE) {
             transition(event = event, authId = event.authId, status = HoldStatus.SETTLED)
         } else {
-            alert(
-                accountId = event.accountId,
-                day = event.bookingDay,
-                kind = AlertKind.SETTLEMENT_WITHOUT_AUTHORIZATION,
-                event = event.id,
-                message = "${event.authId} has no active hold (${status ?: "never authorized"}); ${event.amount} debited anyway",
+            repo.add(
+                Alert(
+                    accountId = event.accountId,
+                    day = event.bookingDay,
+                    valueDay = event.valueDay,
+                    kind = AlertKind.SETTLEMENT_WITHOUT_AUTHORIZATION,
+                    event = event.id,
+                    message = "${event.authId} has no active hold (${status ?: "never authorized"}); ${event.amount} debited anyway",
+                )
             )
         }
     }
 
     private fun reverse(event: Event.Reversal) {
-        val targets = entries.filter {
-            it.accountId == event.accountId && it.sourceEvent == event.reverses && it.type != EntryType.REVERSAL
-        }
+        val accountEntries = repo.entries(event.accountId)
+        val targets = accountEntries.filter { it.sourceEvent == event.reverses && it.type != EntryType.REVERSAL }
         if (targets.isEmpty()) {
             return reject(
                 event = event,
@@ -144,7 +124,7 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
             )
         }
         val targetIds = targets.map { it.id }.toSet()
-        if (entries.any { it.type == EntryType.REVERSAL && it.compensates in targetIds }) {
+        if (accountEntries.any { it.type == EntryType.REVERSAL && it.compensates in targetIds }) {
             return reject(event = event, reason = RejectionReason.ALREADY_REVERSED, message = "${event.reverses} was already reversed")
         }
         targets.forEach {
@@ -162,7 +142,6 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
 
     fun closeDay(accountId: AccountId, today: Day) {
         reassessOverdraftFees(accountId, today)
-        reassessInterest(accountId, today)
         if ((today.number - firstDay.number + 1) % policy.interestCapitalizationIntervalDays == 0) capitalizeInterest(accountId, today)
     }
 
@@ -172,22 +151,28 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
      * fee is outstanding, refund it with a compensating entry.
      */
     private fun reassessOverdraftFees(accountId: AccountId, today: Day) {
-        val account = account(accountId)
+        val account = repo.account(accountId)
         val feeAmount = policy.overdraftFees[account.currency]
         for (day in firstDay..today) {
             val balance = closingBalanceBeforeFee(accountId, day)
-            val feeEntries = entries.filter { it.accountId == accountId && it.valueDay == day && it.type in FEE_TYPES }
+            val feeEntries = repo.entries(accountId).filter { it.valueDay == day && it.type in FEE_TYPES }
             val feeOutstanding = sum(account, feeEntries.map { it.amount }).isNegative
 
             if (balance.isNegative && !feeOutstanding) {
                 if (feeAmount == null) {
-                    if (flaggedMissingFee.add(accountId to day)) {
-                        alert(
-                            accountId = accountId,
-                            day = today,
-                            kind = AlertKind.OVERDRAFT_FEE_UNDEFINED_FOR_CURRENCY,
-                            event = null,
-                            message = "$day closing balance $balance is negative but no ${account.currency} overdraft fee is defined",
+                    val alreadyFlagged = repo.alerts(accountId).any {
+                        it.kind == AlertKind.OVERDRAFT_FEE_UNDEFINED_FOR_CURRENCY && it.valueDay == day
+                    }
+                    if (!alreadyFlagged) {
+                        repo.add(
+                            Alert(
+                                accountId = accountId,
+                                day = today,
+                                valueDay = day,
+                                kind = AlertKind.OVERDRAFT_FEE_UNDEFINED_FOR_CURRENCY,
+                                event = null,
+                                message = "$day closing balance $balance is negative but no ${account.currency} overdraft fee is defined",
+                            )
                         )
                     }
                 } else {
@@ -216,53 +201,18 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
         }
     }
 
-    /** Same shape as fees: bring each value day's accrual to its target by appending the difference. */
-    private fun reassessInterest(accountId: AccountId, today: Day) {
-        val account = account(accountId)
-        for (day in firstDay..today) {
-            // A day's end-of-day interest posting earns interest starting the next day.
-            val capitalizedToday = sum(account, entries.filter {
-                it.accountId == accountId && it.valueDay == day && it.type == EntryType.INTEREST_CAPITALIZATION
-            }.map { it.amount })
-            val balance = closingBalance(accountId, day) - capitalizedToday
-            val target = if (balance.isPositive) {
-                Money.rounded(balance.toBigDecimal() * policy.dailyInterestRate, account.currency)
-            } else {
-                Money.zero(account.currency)
-            }
-            val accrued = accruedInterest(accountId, day)
-            if (target != accrued) {
-                accruals += InterestAccrual(
-                    accountId = accountId,
-                    valueDay = day,
-                    bookedOn = today,
-                    closingBalance = balance,
-                    amount = target - accrued,
-                )
-            }
-        }
-    }
-
+    /**
+     * Posts all interest earned through today that has not been capitalized yet. Each day's
+     * interest is computed now from current balances, so a back-dated change to an
+     * already-capitalized day is settled here, at the next capitalization.
+     */
     private fun capitalizeInterest(accountId: AccountId, today: Day) {
-        if (entries.any { it.accountId == accountId && it.type == EntryType.INTEREST_CAPITALIZATION && it.bookingDay == today }) return
-        val account = account(accountId)
-        val perDay = (firstDay..today).map { accruedInterest(accountId, it) }
-        val total = sum(account, accruals.filter { it.accountId == accountId }.map { it.amount })
-        // Holds by construction (total is the same records summed differently); kept as a tripwire.
-        if (sum(account, perDay) != total) {
-            alert(
-                accountId = accountId,
-                day = today,
-                kind = AlertKind.INTEREST_SUM_MISMATCH,
-                event = null,
-                message = "daily accruals sum to ${sum(account, perDay)} but total is $total",
-            )
-            return
-        }
-        val alreadyCapitalized = sum(account, entries.filter {
-            it.accountId == accountId && it.type == EntryType.INTEREST_CAPITALIZATION
-        }.map { it.amount })
-        val outstanding = total - alreadyCapitalized
+        val capitalizations = repo.entries(accountId).filter { it.type == EntryType.INTEREST_CAPITALIZATION }
+        if (capitalizations.any { it.bookingDay == today }) return
+        val account = repo.account(accountId)
+        val earned = sum(account, (firstDay..today).map { interest(accountId, it) })
+        val alreadyCapitalized = sum(account, capitalizations.map { it.amount })
+        val outstanding = earned - alreadyCapitalized
         if (outstanding != Money.zero(account.currency)) {
             postSystem(
                 accountId = accountId,
@@ -270,7 +220,7 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
                 amount = outstanding,
                 bookingDay = today,
                 valueDay = today,
-                memo = "accrued $total less previously capitalized $alreadyCapitalized",
+                memo = "earned $earned less previously capitalized $alreadyCapitalized",
             )
         }
     }
@@ -279,59 +229,60 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
 
     /** All entries with value date <= day. */
     fun closingBalance(accountId: AccountId, day: Day): Money {
-        val account = account(accountId)
-        return account.openingBalance + sum(account, entries.filter { it.accountId == accountId && it.valueDay <= day }.map { it.amount })
+        val account = repo.account(accountId)
+        return account.openingBalance + sum(account, repo.entries(accountId).filter { it.valueDay <= day }.map { it.amount })
     }
 
     /** Closing balance excluding the overdraft fee (and refunds) booked for that very day. */
     fun closingBalanceBeforeFee(accountId: AccountId, day: Day): Money {
-        val account = account(accountId)
-        val relevant = entries.filter {
-            it.accountId == accountId && it.valueDay <= day && !(it.valueDay == day && it.type in FEE_TYPES)
+        val account = repo.account(accountId)
+        val relevant = repo.entries(accountId).filter {
+            it.valueDay <= day && !(it.valueDay == day && it.type in FEE_TYPES)
         }
         return account.openingBalance + sum(account, relevant.map { it.amount })
     }
 
     fun availableBalance(accountId: AccountId, day: Day): Money {
-        val account = account(accountId)
-        val active = holds.filter { it.accountId == accountId && holdStatus(accountId, it.authId) == HoldStatus.ACTIVE }
+        val account = repo.account(accountId)
+        val active = repo.holds(accountId).filter { holdStatus(accountId, it.authId) == HoldStatus.ACTIVE }
         return closingBalance(accountId, day) - sum(account, active.map { it.amount })
     }
 
+    /**
+     * One value day's interest, rounded on its own so the daily amounts sum exactly to what
+     * is capitalized. A day's own capitalization starts earning interest the next day.
+     */
+    fun interest(accountId: AccountId, day: Day): Money {
+        val account = repo.account(accountId)
+        val capitalizedThatDay = sum(account, repo.entries(accountId).filter {
+            it.valueDay == day && it.type == EntryType.INTEREST_CAPITALIZATION
+        }.map { it.amount })
+        val balance = closingBalance(accountId, day) - capitalizedThatDay
+        if (!balance.isPositive) return Money.zero(account.currency)
+        return Money.rounded(balance.toBigDecimal() * policy.dailyInterestRate, account.currency)
+    }
+
     fun holdStatus(accountId: AccountId, authId: AuthId): HoldStatus? =
-        holdTransitions.lastOrNull { it.accountId == accountId && it.authId == authId }?.status
+        repo.holdTransitions(accountId).lastOrNull { it.authId == authId }?.status
 
     fun holdStatuses(accountId: AccountId): Map<AuthId, HoldStatus> =
-        holdTransitions.filter { it.accountId == accountId }.associate { it.authId to it.status }
-
-    fun accruedInterest(accountId: AccountId, valueDay: Day): Money =
-        sum(account(accountId), accruals.filter { it.accountId == accountId && it.valueDay == valueDay }.map { it.amount })
-
-    fun entriesBookedOn(accountId: AccountId, day: Day): List<LedgerEntry> =
-        entries.filter { it.accountId == accountId && it.bookingDay == day }
-
-    fun accrualsBookedOn(accountId: AccountId, day: Day): List<InterestAccrual> =
-        accruals.filter { it.accountId == accountId && it.bookedOn == day }
-
-    fun rejectionsOn(accountId: AccountId, day: Day): List<Rejection> =
-        rejections.filter { it.accountId == accountId && it.day == day }
-
-    fun alertsOn(accountId: AccountId, day: Day): List<Alert> =
-        alerts.filter { it.accountId == accountId && it.day == day }
+        repo.holdTransitions(accountId).associate { it.authId to it.status }
 
     // --------------------------------------------------------------- helpers
 
     private fun post(event: Event, type: EntryType, amount: Money, compensates: EntryId? = null, memo: String = "") {
-        entries += LedgerEntry(
-            id = EntryId(nextEntryId++),
-            accountId = event.accountId,
-            type = type,
-            amount = amount,
-            bookingDay = event.bookingDay,
-            valueDay = event.valueDay,
-            sourceEvent = event.id,
-            compensates = compensates,
-            memo = memo,
+        repo.add(
+            LedgerEntry(
+                id = repo.nextEntryId(),
+                accountId = event.accountId,
+                type = type,
+                amount = amount,
+                bookingDay = event.bookingDay,
+                valueDay = event.valueDay,
+                sourceEvent = event.id,
+                compensates = compensates,
+                memo = memo,
+            )
         )
     }
 
@@ -339,26 +290,30 @@ class Ledger(accounts: List<Account>, val policy: Policy = Policy.DEFAULT, val f
         accountId: AccountId, type: EntryType, amount: Money, bookingDay: Day, valueDay: Day,
         compensates: EntryId? = null, memo: String = "",
     ) {
-        entries += LedgerEntry(
-            id = EntryId(nextEntryId++),
-            accountId = accountId,
-            type = type,
-            amount = amount,
-            bookingDay = bookingDay,
-            valueDay = valueDay,
-            sourceEvent = null,
-            compensates = compensates,
-            memo = memo,
+        repo.add(
+            LedgerEntry(
+                id = repo.nextEntryId(),
+                accountId = accountId,
+                type = type,
+                amount = amount,
+                bookingDay = bookingDay,
+                valueDay = valueDay,
+                sourceEvent = null,
+                compensates = compensates,
+                memo = memo,
+            )
         )
     }
 
     private fun transition(event: Event, authId: AuthId, status: HoldStatus) {
-        holdTransitions += HoldTransition(
-            accountId = event.accountId,
-            authId = authId,
-            status = status,
-            day = event.bookingDay,
-            causedBy = event.id,
+        repo.add(
+            HoldTransition(
+                accountId = event.accountId,
+                authId = authId,
+                status = status,
+                day = event.bookingDay,
+                causedBy = event.id,
+            )
         )
     }
 
