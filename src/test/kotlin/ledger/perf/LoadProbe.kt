@@ -67,7 +67,7 @@ private fun memory(accounts: Int, events: Int) {
         val id = EventId("E$i")
         if (i % 5 == 4) {
             val authId = AuthId("AUTH-$i")
-            repo.add(Hold(authId = authId, accountId = a.id, amount = Money(1000, a.currency), sourceEvent = id, placedOn = day))
+            repo.add(Hold(authId = authId, accountId = a.id, amount = Money(1000, a.currency), sourceEvent = id, placedOn = day, status = HoldStatus.ACTIVE))
             repo.add(HoldTransition(accountId = a.id, authId = authId, status = HoldStatus.ACTIVE, day = day, causedBy = id))
             repo.add(HoldTransition(accountId = a.id, authId = authId, status = HoldStatus.SETTLED, day = day, causedBy = id))
         }

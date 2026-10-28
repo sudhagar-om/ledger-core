@@ -124,21 +124,23 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
     }
 
     private fun authorize(event: Event.Authorization) {
-        if (repo.holds(event.accountId).any { it.authId == event.authId }) {
+        if (repo.hold(event.accountId, event.authId) != null) {
             return reject(event = event, reason = RejectionReason.DUPLICATE_AUTHORIZATION, message = "${event.authId} already exists")
         }
         // A decline is an outcome, not an error: the DECLINED status is the record of it.
         val declined = (liveAvailableBalance(event.accountId, event.bookingDay) - event.amount).isNegative
-        val hold = Hold(
-            authId = event.authId,
-            accountId = event.accountId,
-            amount = event.amount,
-            sourceEvent = event.id,
-            placedOn = event.bookingDay,
+        val status = if (declined) HoldStatus.DECLINED else HoldStatus.ACTIVE
+        repo.add(
+            Hold(
+                authId = event.authId,
+                accountId = event.accountId,
+                amount = event.amount,
+                sourceEvent = event.id,
+                placedOn = event.bookingDay,
+                status = status,
+            )
         )
-        repo.add(hold)
-        transition(event = event, authId = event.authId, status = if (declined) HoldStatus.DECLINED else HoldStatus.ACTIVE)
-        if (!declined) repo.dailyBalances(event.accountId).activeHolds[event.authId] = hold
+        transition(event = event, authId = event.authId, status = status)
     }
 
     /**
@@ -221,8 +223,7 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
 
     /** Releases active holds that have locked available balance for [Policy.holdExpiryDays]. */
     private fun expireHolds(accountId: AccountId, today: Day) {
-        val active = repo.dailyBalances(accountId).activeHolds
-        active.values
+        repo.activeHolds(accountId)
             .filter { today.number - it.placedOn.number + 1 >= policy.holdExpiryDays }
             .forEach {
                 repo.add(
@@ -234,7 +235,6 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
                         causedBy = null,
                     )
                 )
-                active.remove(it.authId)
             }
     }
 
@@ -350,7 +350,7 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
 
     fun liveAvailableBalance(accountId: AccountId, day: Day): Money {
         val account = repo.account(accountId)
-        val held = sum(account, repo.dailyBalances(accountId).activeHolds.values.map { it.amount })
+        val held = sum(account, repo.activeHolds(accountId).map { it.amount })
         return liveBalance(accountId, day) - held
     }
 
@@ -363,7 +363,9 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
 
     fun availableBalance(accountId: AccountId, day: Day): Money {
         val account = repo.account(accountId)
-        val active = repo.holds(accountId).filter { holdStatus(accountId, it.authId) == HoldStatus.ACTIVE }
+        // Status from the transitions, not Hold.status, so DailyBalancesTest checks one against the other.
+        val transitions = repo.holdTransitions(accountId)
+        val active = repo.holds(accountId).filter { h -> transitions.lastOrNull { it.authId == h.authId }?.status == HoldStatus.ACTIVE }
         return closingBalance(accountId, day) - sum(account, active.map { it.amount })
     }
 
@@ -383,11 +385,9 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
         if (!balance.isPositive) Money.zero(balance.currency)
         else Money.rounded(balance.toBigDecimal() * policy.dailyInterestRate, balance.currency)
 
-    fun holdStatus(accountId: AccountId, authId: AuthId): HoldStatus? =
-        repo.holdTransitions(accountId).lastOrNull { it.authId == authId }?.status
+    fun holdStatus(accountId: AccountId, authId: AuthId): HoldStatus? = repo.hold(accountId, authId)?.status
 
-    fun holdStatuses(accountId: AccountId): Map<AuthId, HoldStatus> =
-        repo.holdTransitions(accountId).associate { it.authId to it.status }
+    fun holdStatuses(accountId: AccountId): Map<AuthId, HoldStatus> = repo.holds(accountId).associate { it.authId to it.status }
 
     // --------------------------------------------------------------- helpers
 
@@ -457,8 +457,6 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
                 causedBy = event.id,
             )
         )
-        // Any status but ACTIVE releases the hold; authorize adds the ones it approves.
-        if (status != HoldStatus.ACTIVE) repo.dailyBalances(event.accountId).activeHolds.remove(authId)
     }
 
     private fun sum(account: Account, amounts: List<Money>): Money =

@@ -1,6 +1,7 @@
 package ledger.repo
 
 import ledger.model.AccountId
+import ledger.model.AuthId
 import ledger.model.Day
 import ledger.model.Event
 import ledger.model.EventId
@@ -16,8 +17,9 @@ import ledger.model.data.Rejection
 /**
  * The data layer: stores the ledger's records and looks them up by account. It holds no
  * business rules; [ledger.LedgerCore] does all the reasoning over these records. Records are
- * append-only: nothing is ever updated or removed. The one exception is each account's
- * [DailyBalances], a projection of its entries that can be rebuilt from them.
+ * append-only: nothing is ever updated or removed. There are two exceptions: each account's
+ * [DailyBalances], a projection of its entries that can be rebuilt from them, and each
+ * [Hold]'s status, which follows its latest [HoldTransition].
  */
 interface LedgerRepository {
     /** Creates an account; rejects an ID that already exists. */
@@ -31,13 +33,18 @@ interface LedgerRepository {
 
     fun add(entry: LedgerEntry)
     fun add(hold: Hold)
+    /** Appends to the hold's history and sets the hold's status to [HoldTransition.status]. */
     fun add(transition: HoldTransition)
     fun add(rejection: Rejection)
     fun add(alert: Alert)
 
     fun entries(): List<LedgerEntry>
     fun entries(accountId: AccountId): List<LedgerEntry>
+    /** Every hold the account has had, in the order they were placed. */
     fun holds(accountId: AccountId): List<Hold>
+    fun hold(accountId: AccountId, authId: AuthId): Hold?
+    /** The account's holds with status ACTIVE, without looking at the others. */
+    fun activeHolds(accountId: AccountId): List<Hold>
     fun holdTransitions(accountId: AccountId): List<HoldTransition>
     fun rejections(): List<Rejection>
     fun rejections(accountId: AccountId): List<Rejection>

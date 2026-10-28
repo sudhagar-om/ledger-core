@@ -1,6 +1,5 @@
 package ledger.model.data
 
-import ledger.model.AuthId
 import ledger.model.Day
 import ledger.model.Money
 import java.util.TreeMap
@@ -24,8 +23,6 @@ class DailyBalances(val openingBalance: Money) {
 
     /** Entries appended since the last close, plus earlier ones whose value day is still ahead of it. */
     val unsettled = mutableListOf<LedgerEntry>()
-
-    val activeHolds = mutableMapOf<AuthId, Hold>()
 
     fun row(day: Day): DailyBalance = rows.getOrPut(day.number) { DailyBalance(Money.zero(openingBalance.currency)) }
 }

@@ -8,8 +8,8 @@ import ledger.model.Money
 
 /**
  * Lifecycle record for an authorization. Kept outside the ledger: a hold affects
- * available balance, never ledger balance. Status transitions are appended as
- * [HoldTransition]s so the hold history stays append-only too.
+ * available balance, never ledger balance. Unlike ledger entries it is mutable: [status]
+ * is always its latest [HoldTransition], and the transitions are the append-only history.
  */
 data class Hold(
     val authId: AuthId,
@@ -17,4 +17,5 @@ data class Hold(
     val amount: Money,
     val sourceEvent: EventId,
     val placedOn: Day,
+    val status: HoldStatus,
 )

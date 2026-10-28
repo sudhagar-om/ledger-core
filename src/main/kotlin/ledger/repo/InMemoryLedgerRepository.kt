@@ -1,6 +1,7 @@
 package ledger.repo
 
 import ledger.model.AccountId
+import ledger.model.AuthId
 import ledger.model.Day
 import ledger.model.Event
 import ledger.model.EventId
@@ -9,6 +10,7 @@ import ledger.model.data.Alert
 import ledger.model.data.DailyBalances
 import ledger.model.data.EntryId
 import ledger.model.data.Hold
+import ledger.model.data.HoldStatus
 import ledger.model.data.HoldTransition
 import ledger.model.data.LedgerEntry
 import ledger.model.data.Rejection
@@ -21,7 +23,8 @@ class InMemoryLedgerRepository(accounts: List<Account> = emptyList()) : LedgerRe
         accounts.forEach(::createAccount)
     }
     private val entries = mutableListOf<LedgerEntry>()
-    private val holds = mutableListOf<Hold>()
+    private val holds = mutableMapOf<AccountId, LinkedHashMap<AuthId, Hold>>()
+    private val activeHolds = mutableMapOf<AccountId, MutableSet<AuthId>>()
     private val holdTransitions = mutableListOf<HoldTransition>()
     private val rejections = mutableListOf<Rejection>()
     private val alerts = mutableListOf<Alert>()
@@ -42,14 +45,35 @@ class InMemoryLedgerRepository(accounts: List<Account> = emptyList()) : LedgerRe
     override fun nextEntryId(): EntryId = EntryId(nextEntryId++)
 
     override fun add(entry: LedgerEntry) { entries += entry }
-    override fun add(hold: Hold) { holds += hold }
-    override fun add(transition: HoldTransition) { holdTransitions += transition }
+    override fun add(hold: Hold) {
+        val accountHolds = holds.getOrPut(hold.accountId) { LinkedHashMap() }
+        require(hold.authId !in accountHolds) { "${hold.authId} already exists for ${hold.accountId}" }
+        accountHolds[hold.authId] = hold
+        trackActive(hold)
+    }
+
+    override fun add(transition: HoldTransition) {
+        val accountHolds = holds[transition.accountId]
+        val hold = accountHolds?.get(transition.authId) ?: error("No hold ${transition.authId} for ${transition.accountId}")
+        holdTransitions += transition
+        val updated = hold.copy(status = transition.status)
+        accountHolds[transition.authId] = updated
+        trackActive(updated)
+    }
+
+    private fun trackActive(hold: Hold) {
+        val active = activeHolds.getOrPut(hold.accountId) { mutableSetOf() }
+        if (hold.status == HoldStatus.ACTIVE) active += hold.authId else active -= hold.authId
+    }
     override fun add(rejection: Rejection) { rejections += rejection }
     override fun add(alert: Alert) { alerts += alert }
 
     override fun entries(): List<LedgerEntry> = entries.toList()
     override fun entries(accountId: AccountId): List<LedgerEntry> = entries.filter { it.accountId == accountId }
-    override fun holds(accountId: AccountId): List<Hold> = holds.filter { it.accountId == accountId }
+    override fun holds(accountId: AccountId): List<Hold> = holds[accountId]?.values?.toList().orEmpty()
+    override fun hold(accountId: AccountId, authId: AuthId): Hold? = holds[accountId]?.get(authId)
+    override fun activeHolds(accountId: AccountId): List<Hold> =
+        activeHolds[accountId].orEmpty().map { holds.getValue(accountId).getValue(it) }
     override fun holdTransitions(accountId: AccountId): List<HoldTransition> = holdTransitions.filter { it.accountId == accountId }
     override fun rejections(): List<Rejection> = rejections.toList()
     override fun rejections(accountId: AccountId): List<Rejection> = rejections.filter { it.accountId == accountId }

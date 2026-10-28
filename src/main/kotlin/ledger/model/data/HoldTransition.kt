@@ -16,7 +16,7 @@ enum class HoldStatus {
     DECLINED,
 }
 
-/** One step in a [Hold]'s lifecycle. A hold's current status is its latest transition. */
+/** One step in a [Hold]'s lifecycle, appended and never changed. Recording one updates [Hold.status]. */
 data class HoldTransition(
     val accountId: AccountId,
     val authId: AuthId,
