@@ -63,13 +63,13 @@ The spec does not say what happens when a settlement is larger than its hold. A 
 
 The usual cause of a legitimate overage is a tip added after authorization, and tips commonly run up to about 20%. At half the value, 10%, ordinary restaurant tips would raise alerts and train reviewers to ignore them. Twice the value, 40%, would let a settlement nearly half again the approved amount through unflagged.
 
-The comparison is exact: on a AED 40.00 hold, 48.00 is silent and 48.01 alerts (`AuthorizationTest`). A settlement below its hold releases the whole hold and raises nothing. Auth-A (hold 200.00, settled 185.00) is this case.
+The comparison is exact: on an AED 40.00 hold, 48.00 is silent and 48.01 alerts (`AuthorizationTest`). A settlement below its hold releases the whole hold and raises nothing. Auth-A (hold 200.00, settled 185.00) is this case.
 
 ## Back-dating limit: 45 days
 
 The spec does not define a back-dating limit. The configured limit is 45 days, allowing one month plus a buffer for delays around month-end close.
 
-A back-dating limit allows older daily summaries to be frozen and their ledger entries archived. An entry dated before the checkpoint needs a backdated authorization and is re-dated to the day after the checkpoint (see AMBIGUITIES.md, *Entries Dated Before the Checkpoint*).
+A back-dating limit allows older daily summaries to be frozen and their ledger entries archived. An entry dated before the checkpoint needs a backdated authorization and is re-dated to the day after the checkpoint (see AMBIGUITIES.md, *Backdating window*).
 
 The limit must allow at least 4 days to support E9, booked on Day 6 with a value date of Day 2.
 
