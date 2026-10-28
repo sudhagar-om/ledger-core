@@ -27,8 +27,8 @@ class AuthorizationTest {
     private fun authorize(authId: String, amount: String) = processor.process(
         Event.Authorization(id = EventId("auth-$authId"), accountId = ACC_001, bookingDay = day, valueDay = day, authId = AuthId(authId), amount = aed(amount))
     )
-    private fun settle(authId: String, amount: String) = processor.process(
-        Event.Settlement(id = EventId("settle-$authId"), accountId = ACC_001, bookingDay = day, valueDay = day, authId = AuthId(authId), amount = aed(amount))
+    private fun settle(authId: String, amount: String, on: Day = day) = processor.process(
+        Event.Settlement(id = EventId("settle-$authId"), accountId = ACC_001, bookingDay = on, valueDay = on, authId = AuthId(authId), amount = aed(amount))
     )
     private fun status(authId: String) = ledger.holdStatus(ACC_001, AuthId(authId))
 
@@ -80,5 +80,25 @@ class AuthorizationTest {
         assertEquals(HoldStatus.DECLINED, status("A1"))
         assertEquals(aed("-400.00"), ledger.closingBalance(ACC_001, day))
         assertEquals(AlertKind.SETTLEMENT_WITHOUT_AUTHORIZATION, ledger.repo.alerts().single().kind)
+    }
+
+    @Test
+    fun `unsettled hold stays active through day 6 and expires at the close of day 7`() {
+        authorize(authId = "A1", amount = "40.00")
+        processor.endOfDay(ACC_001, Day(6))
+        assertEquals(HoldStatus.ACTIVE, status("A1"))
+        processor.endOfDay(ACC_001, Day(7))
+        assertEquals(HoldStatus.EXPIRED, status("A1"))
+        assertEquals(ledger.closingBalance(ACC_001, Day(8)), ledger.availableBalance(ACC_001, Day(8)))
+    }
+
+    @Test
+    fun `settlement after expiry is debited, matched and flagged`() {
+        authorize(authId = "A1", amount = "40.00")
+        processor.endOfDay(ACC_001, Day(7))
+        settle(authId = "A1", amount = "40.00", on = Day(9))
+        assertEquals(HoldStatus.SETTLED, status("A1"))
+        assertEquals(ledger.closingBalance(ACC_001, Day(8)) - aed("40.00"), ledger.closingBalance(ACC_001, Day(9)))
+        assertEquals(AlertKind.SETTLEMENT_AFTER_HOLD_EXPIRY, ledger.repo.alerts().single().kind)
     }
 }

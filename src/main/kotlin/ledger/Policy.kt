@@ -12,9 +12,12 @@ data class Policy(
     val dailyInterestRate: BigDecimal,
     /** Currencies without an entry have no defined fee; going negative raises an error instead. */
     val overdraftFees: Map<Currency, Money>,
+    /** An unsettled hold placed on Day N is released at the close of Day N + this - 1. */
+    val holdExpiryDays: Int,
 ) {
     init {
         require(interestCapitalizationIntervalDays > 0) { "Interest capitalization interval must be positive" }
+        require(holdExpiryDays > 0) { "Hold expiry must be positive" }
     }
 
     companion object {
@@ -22,6 +25,7 @@ data class Policy(
             interestCapitalizationIntervalDays = 6,
             dailyInterestRate = BigDecimal("0.0004"),
             overdraftFees = mapOf(Currency.AED to Money.of("25.00", Currency.AED)),
+            holdExpiryDays = 7,
         )
     }
 }

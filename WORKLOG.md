@@ -114,8 +114,24 @@ I will commit these for now.
 
 Now looking at ErrorKind object, I see it has combined errors and alerts into a single enum. We will split it into separate rejection and alert.
 
-## 10: 07 AM
+## 10:07 AM
 
 Looking at the models, we said we will derive everything on demand from Ledger. But InterestAccrual for each day is a separate model in our system. For now I will remove it. We will come to the decision of what all supporting models we will need later.
 
 Another thing I notice is there is no clear separation between data layer and application layer. I am fixing it.
+
+## 11:02 AM
+I am reviewing idempotency semantics now. Looks like there is none. Adding it.
+
+Then coming to concurrency. What if multiple events come at the same time. But the way we are setting up our system, events are processed serially. And it is all single threaded. This is something we will discuss on architecture document.
+
+Also, add a note to ambiguities about how we handle back dated interest change post capitalization.
+
+## 11:17 AM 
+Reviewing test cases. I see the tests don't cover many error scenarios. Adding them.
+
+Now coming to the critical pieces.
+
+Shall we keep a hold indefinitely? We can't keep accumulating hold indefintely because they lock part of the balance. We will assume we have a fixed hold expiry duration of 7 days.
+
+This doesn't mean we will reject a settlement for a expired hold. The settlement could be delayed due to variety of reasons. Adding a note about this in ambiguities file.

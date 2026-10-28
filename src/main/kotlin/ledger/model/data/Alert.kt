@@ -8,6 +8,8 @@ import ledger.model.EventId
 enum class AlertKind {
     /** Settlement debited even though no active hold matched it. See AMBIGUITIES.md. */
     SETTLEMENT_WITHOUT_AUTHORIZATION,
+    /** Settlement matched a hold that had already expired, so its amount was no longer reserved. See AMBIGUITIES.md. */
+    SETTLEMENT_AFTER_HOLD_EXPIRY,
     /** Closing balance went negative but the spec gives no fee for the currency; no fee charged. See AMBIGUITIES.md. */
     OVERDRAFT_FEE_UNDEFINED_FOR_CURRENCY,
 }

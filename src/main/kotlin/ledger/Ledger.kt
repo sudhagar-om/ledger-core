@@ -27,7 +27,8 @@ import ledger.repo.LedgerRepository
  *    that is applied but needs review also raises an [Alert].
  *  - [closeDay] runs end-of-day processing: overdraft fees are re-assessed for every
  *    value day up to today, so back-dated entries are picked up (see AMBIGUITIES.md,
- *    Retrospective Overdraft Fees), and interest is capitalized on interval days.
+ *    Retrospective Overdraft Fees), interest is capitalized on interval days, and
+ *    stale holds expire.
  */
 class Ledger(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT, val firstDay: Day = Day(1)) {
 
@@ -93,24 +94,41 @@ class Ledger(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT, va
         transition(event = event, authId = event.authId, status = if (declined) HoldStatus.DECLINED else HoldStatus.ACTIVE)
     }
 
-    /** Settlements are facts, not requests: always debited. See AMBIGUITIES.md. */
+    /**
+     * Settlements are facts, not requests: always debited. A late settlement of an expired
+     * hold is still matched, but flagged since its amount was no longer reserved. See AMBIGUITIES.md.
+     */
     private fun settle(event: Event.Settlement) {
         post(event = event, type = EntryType.SETTLEMENT, amount = -event.amount, memo = "settles ${event.authId}")
-        val status = holdStatus(event.accountId, event.authId)
-        if (status == HoldStatus.ACTIVE) {
-            transition(event = event, authId = event.authId, status = HoldStatus.SETTLED)
-        } else {
-            repo.add(
-                Alert(
-                    accountId = event.accountId,
-                    day = event.bookingDay,
-                    valueDay = event.valueDay,
-                    kind = AlertKind.SETTLEMENT_WITHOUT_AUTHORIZATION,
-                    event = event.id,
-                    message = "${event.authId} has no active hold (${status ?: "never authorized"}); ${event.amount} debited anyway",
+        when (val status = holdStatus(event.accountId, event.authId)) {
+            HoldStatus.ACTIVE -> transition(event = event, authId = event.authId, status = HoldStatus.SETTLED)
+            HoldStatus.EXPIRED -> {
+                transition(event = event, authId = event.authId, status = HoldStatus.SETTLED)
+                alert(
+                    event = event,
+                    kind = AlertKind.SETTLEMENT_AFTER_HOLD_EXPIRY,
+                    message = "${event.authId} had expired; ${event.amount} debited without a reserved hold",
                 )
+            }
+            else -> alert(
+                event = event,
+                kind = AlertKind.SETTLEMENT_WITHOUT_AUTHORIZATION,
+                message = "${event.authId} has no active hold (${status ?: "never authorized"}); ${event.amount} debited anyway",
             )
         }
+    }
+
+    private fun alert(event: Event, kind: AlertKind, message: String) {
+        repo.add(
+            Alert(
+                accountId = event.accountId,
+                day = event.bookingDay,
+                valueDay = event.valueDay,
+                kind = kind,
+                event = event.id,
+                message = message,
+            )
+        )
     }
 
     private fun reverse(event: Event.Reversal) {
@@ -143,6 +161,25 @@ class Ledger(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT, va
     fun closeDay(accountId: AccountId, today: Day) {
         reassessOverdraftFees(accountId, today)
         if ((today.number - firstDay.number + 1) % policy.interestCapitalizationIntervalDays == 0) capitalizeInterest(accountId, today)
+        expireHolds(accountId, today)
+    }
+
+    /** Releases active holds that have locked available balance for [Policy.holdExpiryDays]. */
+    private fun expireHolds(accountId: AccountId, today: Day) {
+        repo.holds(accountId)
+            .filter { holdStatus(accountId, it.authId) == HoldStatus.ACTIVE }
+            .filter { today.number - it.placedOn.number + 1 >= policy.holdExpiryDays }
+            .forEach {
+                repo.add(
+                    HoldTransition(
+                        accountId = accountId,
+                        authId = it.authId,
+                        status = HoldStatus.EXPIRED,
+                        day = today,
+                        causedBy = null,
+                    )
+                )
+            }
     }
 
     /**

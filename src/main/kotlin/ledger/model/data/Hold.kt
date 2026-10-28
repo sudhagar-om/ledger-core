@@ -9,8 +9,10 @@ import ledger.model.Money
 enum class HoldStatus {
     /** Approved and still reducing available balance. */
     ACTIVE,
-    /** Released because the matching settlement arrived. */
+    /** Released because the matching settlement arrived, possibly after the hold expired. */
     SETTLED,
+    /** Released at end of day once the hold outlived [ledger.Policy.holdExpiryDays] unsettled. */
+    EXPIRED,
     /** Authorization refused: available balance would have gone below zero. Never reduced available balance. */
     DECLINED,
 }
@@ -33,5 +35,6 @@ data class HoldTransition(
     val authId: AuthId,
     val status: HoldStatus,
     val day: Day,
-    val causedBy: EventId,
+    /** Null for transitions the ledger makes itself, like expiry. */
+    val causedBy: EventId?,
 )

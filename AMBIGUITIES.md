@@ -132,6 +132,8 @@ For our purpose, we will go with banker's rounding or nearest even.
 
 We also won't concern ourself with the digits we are discarding. The rounding could be adding little extra money to the user's account or not adding that. We won't accumulate or track them.
 
+On last question to answer with regards to interest. What happens when a back dated entry changes the interest of a cycle that is already capitalised? We can't go back and change the capitalised amount as it is already posted to the account. So we will compute the corrected interest and credit it in the next cycle's capitalisation.
+
 ## Authorization Hold & Settlement
 In the events we have 2 settlements - one with prior authorization and another without it.
 
@@ -142,6 +144,10 @@ From researching this topic, what I gather is, a settlement is not request that 
 An offline approved card payment may reach our ledger for settlement without any preceding authorization or hold. 
 
 Hence I will model the system to accept a settlement even if there is no corresponding hold.
+
+Another question regarding holds that are not specified is how long do we keep a hold? We can't keep it indefinitely as it locks part of the balance, so I will take the hold expiry period as *7 days* and relase the balance.
+
+A settlement arriving after expiry, however, is still accepted, as settlements can be delayed for a variety of reasons. But we will raise an alert, since the balance it debits was no longer reserved.
 
 ## Instalment calculation
 We have a credit to an account of Rs. 10.000 and there is a note that says its posted as three equal instalments.
