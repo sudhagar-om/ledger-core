@@ -159,3 +159,8 @@ In rare scenario where a entry with value date before checkpoint needs to be pos
 
 ## 2:00 PM
 Start on architecture
+
+## 5:12 PM
+I have the first version of it ready. I am writing it in Coda. so nothing to commit here.
+
+Now I should address the point where the problem is asking for one intentional test failure.
