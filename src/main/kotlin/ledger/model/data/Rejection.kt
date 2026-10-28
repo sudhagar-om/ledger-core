@@ -15,6 +15,8 @@ enum class RejectionReason {
     BOOKING_DAY_CLOSED,
     /** Value date before the checkpoint, without a valid backdated authorization. See AMBIGUITIES.md. */
     BEFORE_CHECKPOINT,
+    /** Value date after the booking day. See AMBIGUITIES.md, Future-dated Entries. */
+    FUTURE_VALUE_DATE,
     DUPLICATE_AUTHORIZATION,
     REVERSAL_TARGET_NOT_FOUND,
     ALREADY_REVERSED,

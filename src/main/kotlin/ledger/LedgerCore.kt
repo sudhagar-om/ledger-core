@@ -96,6 +96,14 @@ class LedgerCore(val repo: LedgerRepository, val policy: Policy = Policy.DEFAULT
                 )
             }
         }
+        // Not supported yet; see AMBIGUITIES.md, Future-dated Entries.
+        if (event.valueDay > event.bookingDay) {
+            return reject(
+                event = event,
+                reason = RejectionReason.FUTURE_VALUE_DATE,
+                message = "value date ${event.valueDay} is after booking day ${event.bookingDay}",
+            )
+        }
         val dated = redateBeforeCheckpoint(event) ?: return
         when (dated) {
             is Event.Credit -> post(event = dated, type = EntryType.CREDIT, amount = dated.amount)

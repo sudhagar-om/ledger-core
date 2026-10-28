@@ -101,6 +101,13 @@ class RejectionTest {
     }
 
     @Test
+    fun `event value-dated after its booking day is rejected`() {
+        ledger.apply(Event.Credit(id = EventId("C1"), accountId = ACC_001, bookingDay = Day(1), valueDay = Day(2), amount = aed("10.00")))
+        assertEquals(listOf(RejectionReason.FUTURE_VALUE_DATE), reasons())
+        assertTrue(ledger.repo.entries().isEmpty())
+    }
+
+    @Test
     fun `instalments that do not sum to the total are rejected`() {
         ledger.apply(instalmentCredit("I1", "10.00", "3.34", "3.34", "3.34"))
         ledger.apply(instalmentCredit("I2", "10.00", "3.33", "3.33", "3.33"))

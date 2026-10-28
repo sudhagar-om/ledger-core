@@ -186,3 +186,8 @@ We have few options
 I will go with (3), but only if the entry carries a backdated authorization. If it has one and it is valid, we accept the entry, set its value date to the day after the window and raise an alert. If it doesn't, we reject it.
 
 Note: validating the backdated authorization will be a dummy implementation for now.
+
+## Future-dated Entries
+TODO: decide how to handle entries with a value date after the booking day.
+
+For now we reject them (FUTURE_VALUE_DATE). Accepting them needs a limit on how far ahead they can be dated, and the available balance would have to count future-dated debits. Otherwise a future-dated settlement releases its hold today while the debit only counts from its value day, and the available balance is overstated in between.
